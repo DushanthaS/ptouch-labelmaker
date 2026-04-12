@@ -58,7 +58,7 @@ Drop any PNG, SVG, JPG, BMP, or GIF into a subdirectory under `static/icons/` an
 
 ## Homebox integration
 
-The app exposes a webhook endpoint that [Homebox](https://homebox.software/) can call to automatically print a label for any asset.
+The app exposes a webhook endpoint that [Homebox](https://homebox.software/) can call to generate a label image for any asset.
 
 ```
 GET /api/homebox/print
@@ -77,11 +77,7 @@ Point your Homebox label-printer webhook at:
 http://<host>:5000/api/homebox/print?URL={url}&TitleText={name}&DescriptionText={description}&AdditionalInformation={location}
 ```
 
-The endpoint renders the label and sends it to the printer immediately, returning JSON:
-
-```json
-{"ok": true, "returncode": 0, "width": 350, "height": 128}
-```
+The endpoint returns a PNG image directly. Homebox handles sending it to the printer. The endpoint works even when the printer is off — it falls back to a 128 px tape height if the printer is unavailable.
 
 Also accepts `POST` with a JSON body using the same field names.
 

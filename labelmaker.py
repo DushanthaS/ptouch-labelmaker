@@ -15,6 +15,7 @@ Routes:
   GET  /api/homebox/print      — Homebox webhook: render + print in one step
 """
 
+import io
 import json
 import os
 import re
@@ -371,14 +372,17 @@ def serve_preview(file_id: str):
 @app.route('/api/homebox/print', methods=['GET', 'POST'])
 def api_homebox_print():
     """
-    Accepts a Homebox label-print webhook.  Renders a structured label
-    (QR code + title / description / additional info) and sends it directly
-    to the printer.
+    Homebox label webhook.  Renders a structured label (QR code + title /
+    description / additional info) and returns it as a PNG image.  Printing
+    is left to the caller (Homebox handles that side).
+
+    Works even when the printer is offline — falls back to 128 px tape height
+    if the printer is unavailable.
 
     Query parameters (GET) or JSON body (POST):
-      URL                  — required; encoded into the QR code
-      TitleText            — optional; large bold heading
-      DescriptionText      — optional; body text (word-wrapped, first line only)
+      URL                   — required; encoded into the QR code
+      TitleText             — optional; large bold heading
+      DescriptionText       — optional; body text (word-wrapped, first line only)
       AdditionalInformation — optional; small info line at the bottom
     """
     if request.method == 'POST':
@@ -395,29 +399,16 @@ def api_homebox_print():
     description     = get_param('DescriptionText')
     additional_info = get_param('AdditionalInformation')
 
+    # Use printer tape height if the printer is on; fall back to 128 px.
     info = get_printer_info()
-    if not info.available:
-        return jsonify({"error": "Printer not available", "raw": info.raw}), 503
-    if info.has_error:
-        return jsonify({"error": f"Printer error: {info.error_message}"}), 503
+    max_h = (info.max_height_px or 128) if info.available else 128
 
-    max_h = info.max_height_px or 128
     img = render_homebox_label(url, title, description, additional_info, max_height=max_h)
 
-    file_id = str(uuid.uuid4())
-    path = os.path.join(STATIC_DIR, f"label_{file_id}.png")
-    img.save(path, format="PNG")
-
-    code, out, err = run_cmd([PT_CMD, f"--image={path}"])
-    ok = (code == 0)
-    return jsonify({
-        "ok":         ok,
-        "returncode": code,
-        "stdout":     out,
-        "stderr":     err,
-        "width":      img.width,
-        "height":     img.height,
-    }), (200 if ok else 500)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
 
 
 # ---------------------------------------------------------------------------
