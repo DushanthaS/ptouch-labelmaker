@@ -375,6 +375,10 @@
       notices.push(`Border fallback → ${escapeHtml((label || '').trim())}`);
     }
 
+    if (data.font_size && data.font_size !== fontSize) {
+      notices.push(`Font size reduced to ${data.font_size}px to fit tape`);
+    }
+
     const serverIconPath = normalizeIconPath(data.icon);
     if (serverIconPath !== iconKey) {
       if (serverIconPath || iconKey) notices.push(`Icon fallback → ${escapeHtml(displayNameFromPath(serverIconPath))}`);
@@ -446,7 +450,7 @@
     const hrs = Math.floor(mins / 60);
     if (hrs < 24) return `${hrs}h ago`;
     const d = new Date(ts);
-    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   }
 
   function renderHistory() {

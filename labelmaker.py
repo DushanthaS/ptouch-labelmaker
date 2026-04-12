@@ -553,11 +553,7 @@ def load_icon_image(icon_key: str, max_height: int, target_height: Optional[int]
                 return prepare_icon(icon)
         with Image.open(path) as icon:
             return prepare_icon(icon)
-    except (OSError, ValueError):
-        return None
-    except OSError:
-        return None
-    except (AttributeError, TypeError):
+    except (OSError, ValueError, AttributeError, TypeError):
         return None
 
 
@@ -605,7 +601,7 @@ def clamp_qr_size(requested: Optional[int], max_height: int, padding: int) -> in
 def render_label_png(text: str, url: Optional[str], max_height: int, font_size: int = 24,
                       qr_size: int = 96, padding: int = 12, line_spacing: int = 4,
                       font_key: str = DEFAULT_FONT_KEY, border_style: str = BORDER_DEFAULT,
-                      icon_key: str = ICON_DEFAULT, icon_size: Optional[int] = None) -> Image.Image:
+                      icon_key: str = ICON_DEFAULT, icon_size: Optional[int] = None) -> Tuple[Image.Image, int]:
     height = max(24, max_height)
     qr_actual_size = clamp_qr_size(qr_size, height, padding)
     qr_img = None
@@ -699,7 +695,7 @@ def render_label_png(text: str, url: Optional[str], max_height: int, font_size: 
         y += line_heights[i] + line_spacing
 
     img = apply_border(img, border_style)
-    return img.convert('1', dither=Image.NONE)
+    return img.convert('1', dither=Image.NONE), font_size
 
 
 @app.route('/')
@@ -845,6 +841,8 @@ def api_iconify_search():
 @app.route('/api/iconify/download', methods=['POST'])
 def api_iconify_download():
     data = request.get_json(force=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request body"}), 400
     prefix = (data.get("prefix") or "").strip()
     name = (data.get("name") or "").strip()
 
@@ -875,9 +873,14 @@ def api_iconify_download():
 @app.route('/api/preview', methods=['POST'])
 def api_preview():
     data = request.get_json(force=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request body"}), 400
     text = data.get('text', '')
     url = data.get('url', '').strip() or None
-    font_size = int(data.get('font_size', 24))
+    try:
+        font_size = int(data.get('font_size', 24))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid font_size"}), 400
     qr_size_raw = data.get('qr_size')
     try:
         qr_size_val = int(qr_size_raw) if qr_size_raw is not None else None
@@ -917,7 +920,7 @@ def api_preview():
     padding = 12
     resolved_icon_size = clamp_icon_height(icon_size_val, max_h, padding=padding) if resolved_icon else 0
     resolved_qr_size = clamp_qr_size(qr_size_val, max_h, padding=padding)
-    img = render_label_png(
+    img, actual_font_size = render_label_png(
         text=text,
         url=url,
         max_height=max_h,
@@ -939,6 +942,7 @@ def api_preview():
         "width": img.width,
         "path": path,
         "font_key": resolved_font_key,
+        "font_size": actual_font_size,
         "border_style": resolved_border,
         "icon": resolved_icon,
         "qr_size": resolved_qr_size,
@@ -946,12 +950,19 @@ def api_preview():
     })
 
 
+_FILE_ID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+
+
 @app.route('/api/print', methods=['POST'])
 def api_print():
     data = request.get_json(force=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request body"}), 400
     file_id = data.get('file_id')
     if not file_id:
         return jsonify({"error": "Missing file_id"}), 400
+    if not _FILE_ID_RE.match(str(file_id)):
+        return jsonify({"error": "Invalid file_id"}), 400
     path = os.path.join(STATIC_DIR, f"label_{file_id}.png")
     if not os.path.exists(path):
         return jsonify({"error": "Preview not found; generate again."}), 404
@@ -983,4 +994,5 @@ def serve_preview(file_id: str):
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", "5000"))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true")
+    app.run(host='0.0.0.0', port=port, debug=debug)
