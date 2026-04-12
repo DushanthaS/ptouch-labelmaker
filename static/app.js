@@ -561,8 +561,12 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prefix, name }),
       });
+      if (!res.ok) {
+        let errMsg = `Server error ${res.status}`;
+        try { const e = await res.json(); if (e.error) errMsg = e.error; } catch (_) {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       updateIconUi(data.path, { url: data.url });
       closeIconModal();
     } catch (err) {

@@ -859,11 +859,14 @@ def api_iconify_download():
     except Exception as exc:
         return jsonify({"error": f"Failed to fetch icon: {exc}"}), 502
 
-    save_dir = os.path.join(ICON_DIR_ABS, "iconify", prefix)
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f"{name}.svg")
-    with open(save_path, "wb") as fh:
-        fh.write(svg_bytes)
+    try:
+        save_dir = os.path.join(ICON_DIR_ABS, "iconify", prefix)
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{name}.svg")
+        with open(save_path, "wb") as fh:
+            fh.write(svg_bytes)
+    except OSError as exc:
+        return jsonify({"error": f"Failed to save icon: {exc}"}), 500
 
     rel = f"iconify/{prefix}/{name}.svg"
     return jsonify({"path": rel, "url": url_for("static", filename=f"icons/{rel}")})
