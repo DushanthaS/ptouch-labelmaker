@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Flask web app for designing, previewing, and printing Brother P-Touch labels.
 

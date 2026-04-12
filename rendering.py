@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Label image rendering: borders, icons, QR codes, and the two label renderers
 (GUI-driven and Homebox webhook-driven).

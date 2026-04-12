@@ -109,3 +109,19 @@ Add entries here to handle any error codes your printer reports.
 ## Printer setup (Brother P-Touch)
 
 The mode switch on the printer must be set to **E** (Editor mode) for USB communication to work. The app will display a reminder if the printer is not detected.
+
+## Security note
+
+The web interface has no authentication. It is intended for use on a trusted local network. Do not expose it directly to the internet.
+
+## Third-party content
+
+The bundled icons in `static/icons/` are from [Font Awesome Free](https://fontawesome.com) and are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Font Awesome is a trademark of Fonticons, Inc.
+
+## Licence
+
+Copyright (C) 2025 Dan Hoban
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+See [LICENSE](LICENSE) for the full text.

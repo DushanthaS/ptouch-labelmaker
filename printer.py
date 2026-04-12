@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Printer communication: info queries, error codes, subprocess wrapper.
 """
