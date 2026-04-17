@@ -74,10 +74,72 @@
     diagnosticsBtn: $('diagnosticsBtn'),
     diagnosticsModal: $('diagnosticsModal'),
     diagnosticsModalClose: $('diagnosticsModalClose'),
+    elementOrder: $('elementOrder'),
+    updateLibraryBtn: $('updateLibraryBtn'),
   };
   elements.iconModalBackdrop = elements.iconModal ? elements.iconModal.querySelector('[data-close]') : null;
 
   let localSearchDebounce = null;
+  let loadedLibraryEntryId = null;
+
+  // ── Element order drag-and-drop ───────────────────────────────────────────
+
+  function getElementOrder() {
+    if (!elements.elementOrder) return ['icon', 'qr', 'text'];
+    return Array.from(elements.elementOrder.querySelectorAll('[data-element]'))
+      .map((el) => el.dataset.element);
+  }
+
+  function setElementOrder(order) {
+    if (!elements.elementOrder || !Array.isArray(order) || !order.length) return;
+    const pills = {};
+    elements.elementOrder.querySelectorAll('[data-element]').forEach((el) => {
+      pills[el.dataset.element] = el;
+    });
+    order.forEach((key) => {
+      if (pills[key]) elements.elementOrder.appendChild(pills[key]);
+    });
+  }
+
+  (function initElementOrderDnd() {
+    const container = elements.elementOrder;
+    if (!container) return;
+    let dragSrc = null;
+
+    container.addEventListener('dragstart', (e) => {
+      dragSrc = e.target.closest('[data-element]');
+      if (!dragSrc) return;
+      e.dataTransfer.effectAllowed = 'move';
+      dragSrc.classList.add('dragging');
+    });
+
+    container.addEventListener('dragend', () => {
+      if (dragSrc) dragSrc.classList.remove('dragging');
+      dragSrc = null;
+      container.querySelectorAll('.drag-over').forEach((el) => el.classList.remove('drag-over'));
+    });
+
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const target = e.target.closest('[data-element]');
+      container.querySelectorAll('.drag-over').forEach((el) => el.classList.remove('drag-over'));
+      if (target && target !== dragSrc) target.classList.add('drag-over');
+    });
+
+    container.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const target = e.target.closest('[data-element]');
+      if (!target || !dragSrc || target === dragSrc) return;
+      target.classList.remove('drag-over');
+      const rect = target.getBoundingClientRect();
+      if (e.clientX < rect.left + rect.width / 2) {
+        container.insertBefore(dragSrc, target);
+      } else {
+        container.insertBefore(dragSrc, target.nextSibling);
+      }
+    });
+  })();
 
   function normalizeIconPath(value) {
     if (!value || value === 'none') return '';
@@ -346,6 +408,7 @@
         icon: iconKey,
         icon_size: currentIconSize,
         label_width_mm: labelWidthMm,
+        element_order: getElementOrder(),
       }),
     });
     const data = await res.json();
@@ -412,6 +475,7 @@
       }
     }
     if (elements.printBtn) elements.printBtn.disabled = (!printerAvailable) || hasError;
+    if (elements.updateLibraryBtn) elements.updateLibraryBtn.hidden = !loadedLibraryEntryId;
   }
 
   // ── History ──────────────────────────────────────────────────────────────
@@ -638,8 +702,11 @@
     if (elements.iconSizeInput) { elements.iconSizeInput.value = String(currentIconSize); updateIconSizeDisplay(); }
     if (elements.qrSizeInput) { elements.qrSizeInput.value = String(currentQrSize); updateQrSizeDisplay(); }
     updateIconUi(entry.icon || '', { url: entry.icon ? iconPathToUrl(entry.icon) : null });
+    setElementOrder(entry.element_order);
+    loadedLibraryEntryId = entry.starred ? entry.id : null;
     currentFileId = null;
     if (elements.printBtn) elements.printBtn.disabled = !printerAvailable || hasError;
+    if (elements.updateLibraryBtn) elements.updateLibraryBtn.hidden = true;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -682,6 +749,7 @@
       icon_size: currentIconSize,
       qr_size: currentQrSize,
       label_width_mm: labelWidthRaw !== '' ? parseFloat(labelWidthRaw) : null,
+      element_order: getElementOrder(),
     };
   }
 
@@ -1071,6 +1139,27 @@
         console.error('Print failed', err);
         window.alert('Print failed due to an unexpected error. See console for details.');
       });
+    });
+  }
+
+  if (elements.updateLibraryBtn) {
+    elements.updateLibraryBtn.addEventListener('click', async () => {
+      if (!loadedLibraryEntryId || !currentFileId) return;
+      elements.updateLibraryBtn.disabled = true;
+      elements.updateLibraryBtn.textContent = 'Saving…';
+      try {
+        await fetch(`/api/history/${loadedLibraryEntryId}/overwrite`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_id: currentFileId }),
+        });
+        renderHistory();
+      } catch (err) {
+        console.error('Update library failed', err);
+      } finally {
+        elements.updateLibraryBtn.disabled = false;
+        elements.updateLibraryBtn.textContent = 'Update library label';
+      }
     });
   }
 

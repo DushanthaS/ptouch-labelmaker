@@ -782,6 +782,52 @@
       gap: 10px;
     }
 
+    .form-divider {
+      border: none;
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
+      margin: 0;
+    }
+
+    .element-order {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .element-order__pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 14px;
+      background: var(--surface);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-md);
+      cursor: grab;
+      user-select: none;
+      font-size: 13px;
+      color: var(--ink);
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .element-order__pill:active {
+      cursor: grabbing;
+    }
+
+    .element-order__pill.drag-over {
+      border-color: var(--accent);
+      background: rgba(93, 139, 255, 0.12);
+    }
+
+    .element-order__pill.dragging {
+      opacity: 0.45;
+    }
+
+    .element-order__handle {
+      color: var(--ink-muted);
+      font-size: 15px;
+      line-height: 1;
+    }
+
     @media (max-width: 640px) {
       .app {
         padding: 24px 16px 40px;
@@ -858,25 +904,12 @@
         <div class="card__header">
           <h2 class="card__title">Label Layout</h2>
         </div>
+
         <div class="field-group">
           <div class="field">
             <label for="labelText">Label text</label>
-            <textarea id="labelText" rows="6" placeholder="Type your label text…"></textarea>
+            <textarea id="labelText" rows="5" placeholder="Type your label text…"></textarea>
           </div>
-          <div class="field">
-            <label for="labelUrl">URL</label>
-            <input id="labelUrl" type="text" placeholder="https://example.com" />
-          </div>
-          <div class="field">
-            <label for="qrSize">QR size</label>
-            <div class="size-control">
-              <input type="range" id="qrSize" min="{{ qr_min_size }}" max="{{ qr_min_size }}" value="{{ qr_min_size }}">
-              <span id="qrSizeValue">{{ qr_min_size }} px</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="field-group">
           <div class="field-inline">
             <div class="field">
               <label for="fontFamily">Font</label>
@@ -893,7 +926,27 @@
               <input id="fontSize" type="number" value="24" min="8" max="96">
             </div>
           </div>
+        </div>
 
+        <hr class="form-divider">
+
+        <div class="field-group">
+          <div class="field">
+            <label for="labelUrl">URL</label>
+            <input id="labelUrl" type="text" placeholder="https://example.com" />
+          </div>
+          <div class="field">
+            <label for="qrSize">QR size</label>
+            <div class="size-control">
+              <input type="range" id="qrSize" min="{{ qr_min_size }}" max="{{ qr_min_size }}" value="{{ qr_min_size }}">
+              <span id="qrSizeValue">{{ qr_min_size }} px</span>
+            </div>
+          </div>
+        </div>
+
+        <hr class="form-divider">
+
+        <div class="field-group">
           <div class="field">
             <label>Icon</label>
             <div class="icon-picker__row">
@@ -916,6 +969,28 @@
             </div>
           </div>
 
+          <div class="field">
+            <label>Element order <span class="muted" style="font-weight:400;font-size:12px">— drag to reorder</span></label>
+            <div class="element-order" id="elementOrder">
+              <div class="element-order__pill" draggable="true" data-element="icon">
+                <span class="element-order__handle">⠿</span>
+                <span>Icon</span>
+              </div>
+              <div class="element-order__pill" draggable="true" data-element="qr">
+                <span class="element-order__handle">⠿</span>
+                <span>QR</span>
+              </div>
+              <div class="element-order__pill" draggable="true" data-element="text">
+                <span class="element-order__handle">⠿</span>
+                <span>Text</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="form-divider">
+
+        <div class="field-group">
           <div class="field-inline">
             <div class="field">
               <label for="borderStyle">Border</label>
@@ -935,6 +1010,7 @@
         <div class="actions">
           <button id="previewBtn" class="primary" type="button">Generate preview</button>
           <button id="printBtn" type="button" disabled>Print</button>
+          <button id="updateLibraryBtn" type="button" class="secondary" hidden>Update library label</button>
         </div>
       </section>
 

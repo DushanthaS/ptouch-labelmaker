@@ -285,6 +285,9 @@ def clamp_qr_size(requested: Optional[int], max_height: int, padding: int) -> in
 # GUI label renderer
 # ---------------------------------------------------------------------------
 
+_DEFAULT_ELEMENT_ORDER: List[str] = ['icon', 'qr', 'text']
+
+
 def render_label_png(
     text: str,
     url: Optional[str],
@@ -298,6 +301,7 @@ def render_label_png(
     icon_key: str = ICON_DEFAULT,
     icon_size: Optional[int] = None,
     max_width: Optional[int] = None,
+    element_order: Optional[List[str]] = None,
 ) -> Tuple[Image.Image, int]:
     height = max(24, max_height)
     qr_actual_size = clamp_qr_size(qr_size, height, padding)
@@ -364,13 +368,21 @@ def render_label_png(
     icon_w = icon_img.width if icon_img is not None else 0
     qr_w = qr_img.width if qr_img is not None else 0
 
+    # Resolve element order; fill in any missing elements at the end
+    _order: List[str] = list(element_order) if element_order else list(_DEFAULT_ELEMENT_ORDER)
+    _order = [e for e in _order if e in {'icon', 'qr', 'text'}]
+    for _e in _DEFAULT_ELEMENT_ORDER:
+        if _e not in _order:
+            _order.append(_e)
+
+    _elem_w = {'icon': icon_w, 'qr': qr_w, 'text': text_width}
+    _present = [e for e in _order if _elem_w[e] > 0]
+
     width = padding
-    if icon_w:
-        width += icon_w + (padding if qr_w or text_width > 0 else 0)
-    if qr_w:
-        width += qr_w + (padding if text_width > 0 else 0)
-    if text_width > 0:
-        width += text_width
+    for _i, _e in enumerate(_present):
+        width += _elem_w[_e]
+        if _i < len(_present) - 1:
+            width += padding
     width = max(1, width + padding)
     if max_width is not None:
         width = max(width, max_width)
@@ -379,18 +391,17 @@ def render_label_png(
     draw = ImageDraw.Draw(img)
     x = padding
 
-    if icon_img is not None:
-        img.paste(icon_img, (x, (height - icon_img.height) // 2))
-        x += icon_img.width + (padding if qr_img is not None or text_width > 0 else 0)
-
-    if qr_img is not None:
-        img.paste(qr_img, (x, (height - qr_img.height) // 2))
-        x += qr_img.width + (padding if text_width > 0 else 0)
-
-    y = (height - total_text_height) // 2
-    for i, ln in enumerate(lines):
-        draw.text((x, y), ln, font=font, fill=0)
-        y += line_heights[i] + line_spacing
+    for _i, _e in enumerate(_present):
+        if _e == 'icon' and icon_img is not None:
+            img.paste(icon_img, (x, (height - icon_img.height) // 2))
+        elif _e == 'qr' and qr_img is not None:
+            img.paste(qr_img, (x, (height - qr_img.height) // 2))
+        elif _e == 'text':
+            y = (height - total_text_height) // 2
+            for _j, ln in enumerate(lines):
+                draw.text((x, y), ln, font=font, fill=0)
+                y += line_heights[_j] + line_spacing
+        x += _elem_w[_e] + (padding if _i < len(_present) - 1 else 0)
 
     img = apply_border(img, border_style)
     return img.convert('1', dither=Image.NONE), font_size

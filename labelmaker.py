@@ -350,6 +350,13 @@ def api_preview():
     if label_width_mm is not None and label_width_mm <= 0:
         return jsonify({"error": "label_width_mm must be greater than 0"}), 400
 
+    _valid_elements = {'icon', 'qr', 'text'}
+    element_order_raw = data.get('element_order')
+    if isinstance(element_order_raw, list):
+        element_order = [e for e in element_order_raw if isinstance(e, str) and e in _valid_elements]
+    else:
+        element_order = None
+
     if font_key not in FONT_LIBRARY:
         return jsonify({"error": f"Unknown font selection '{font_key}'."}), 400
     if border_style not in BORDER_STYLES:
@@ -389,6 +396,7 @@ def api_preview():
         icon_key=resolved_icon,
         icon_size=resolved_icon_size,
         max_width=max_width_px,
+        element_order=element_order,
     )
 
     file_id = str(uuid.uuid4())
@@ -411,6 +419,7 @@ def api_preview():
         "icon_size":       resolved_icon_size,
         "qr_size":         resolved_qr_size,
         "label_width_mm":  label_width_mm,
+        "element_order":   element_order or ['icon', 'qr', 'text'],
         "rendered_width":  img.width,
         "rendered_height": img.height,
     }
@@ -435,6 +444,7 @@ def api_preview():
         "qr_size":         resolved_qr_size,
         "icon_size":       resolved_icon_size,
         "label_width_mm":  label_width_mm,
+        "element_order":   element_order or ['icon', 'qr', 'text'],
     })
 
 
@@ -545,6 +555,36 @@ def api_history_delete(entry_id: str):
         return jsonify({"error": "Invalid id"}), 400
     shutil.rmtree(_entry_dir(entry_id), ignore_errors=True)
     return jsonify({"ok": True})
+
+
+@app.route('/api/history/<entry_id>/overwrite', methods=['POST'])
+def api_history_overwrite(entry_id: str):
+    """Replace a starred library entry's preview and metadata with a freshly-generated preview."""
+    if not _FILE_ID_RE.match(entry_id):
+        return jsonify({"error": "Invalid id"}), 400
+    meta = _load_meta(entry_id)
+    if meta is None:
+        return jsonify({"error": "Entry not found"}), 404
+    if not meta.get('starred'):
+        return jsonify({"error": "Can only overwrite starred entries"}), 400
+    req = request.get_json(force=True, silent=True) or {}
+    file_id = str(req.get('file_id', '')).strip()
+    if not file_id or not _FILE_ID_RE.match(file_id):
+        return jsonify({"error": "Invalid file_id"}), 400
+    sidecar_path = os.path.join(STATIC_DIR, f'label_{file_id}_meta.json')
+    png_path     = os.path.join(STATIC_DIR, f'label_{file_id}.png')
+    if not os.path.exists(sidecar_path) or not os.path.exists(png_path):
+        return jsonify({"error": "Preview not found; generate again"}), 404
+    with open(sidecar_path) as fh:
+        new_meta = json.load(fh)
+    # Preserve identity and library metadata
+    new_meta['id']         = entry_id
+    new_meta['starred']    = True
+    new_meta['name']       = meta.get('name')
+    new_meta['created_at'] = meta.get('created_at', time.time())
+    _save_label_entry(entry_id, new_meta, png_path)
+    new_meta['preview_url'] = f'/preview/{entry_id}.png'
+    return jsonify(new_meta)
 
 
 # ---------------------------------------------------------------------------
