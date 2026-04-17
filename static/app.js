@@ -276,16 +276,8 @@
     }
 
     if (elements.statusError) {
-      if (!printerAvailable) {
-        elements.statusError.style.display = 'block';
-        elements.statusError.innerHTML = '<span class="badge err">Turn the printer on and set the switch to E, then click Refresh.</span>';
-      } else if (hasError) {
-        elements.statusError.style.display = 'block';
-        elements.statusError.innerHTML = `<span class="badge err">${escapeHtml(errorMessage)}</span>`;
-      } else {
-        elements.statusError.style.display = 'none';
-        elements.statusError.textContent = '';
-      }
+      elements.statusError.style.display = 'none';
+      elements.statusError.textContent = '';
     }
 
     if (elements.details) {
@@ -525,24 +517,31 @@
     const actions = document.createElement('div');
     actions.className = 'history-entry__actions';
 
-    function makeHistoryBtn(label, icon) {
+    function makeHistoryBtn(label, iconSrc) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'secondary';
       btn.setAttribute('aria-label', label);
       btn.setAttribute('title', label);
-      btn.dataset.icon = icon;
-      btn.innerHTML = `<span class="btn-text">${label}</span>`;
+      const iconEl = document.createElement('img');
+      iconEl.src = iconSrc;
+      iconEl.alt = '';
+      iconEl.className = 'btn-icon';
+      const textEl = document.createElement('span');
+      textEl.className = 'btn-text';
+      textEl.textContent = label;
+      btn.appendChild(iconEl);
+      btn.appendChild(textEl);
       return btn;
     }
 
     if (entry.starred) {
       // Library entry: Load, Reprint, Delete
-      const loadBtn = makeHistoryBtn('Load', '↩');
+      const loadBtn = makeHistoryBtn('Load', '/static/icons/solid/folder-open.svg');
       loadBtn.addEventListener('click', () => loadFromHistory(entry));
       actions.appendChild(loadBtn);
 
-      const reprintBtn = makeHistoryBtn('Reprint', '↻');
+      const reprintBtn = makeHistoryBtn('Reprint', '/static/icons/solid/print.svg');
       reprintBtn.addEventListener('click', () => {
         reprintBtn.disabled = true;
         reprintBtn.querySelector('.btn-text').textContent = 'Printing…';
@@ -554,7 +553,7 @@
       });
       actions.appendChild(reprintBtn);
 
-      const deleteBtn = makeHistoryBtn('Delete', '✕');
+      const deleteBtn = makeHistoryBtn('Delete', '/static/icons/solid/trash.svg');
       deleteBtn.addEventListener('click', () => {
         deleteBtn.disabled = true;
         fetch(`/api/history/${entry.id}`, { method: 'DELETE' })
@@ -567,7 +566,7 @@
       actions.appendChild(deleteBtn);
     } else {
       // Recent entry: Save, Load, Reprint
-      const saveBtn = makeHistoryBtn('Save', '★');
+      const saveBtn = makeHistoryBtn('Save', '/static/icons/solid/floppy-disk.svg');
       saveBtn.addEventListener('click', () => {
         saveBtn.disabled = true;
         fetch(`/api/history/${entry.id}/star`, {
@@ -581,11 +580,11 @@
       });
       actions.appendChild(saveBtn);
 
-      const loadBtn = makeHistoryBtn('Load', '↩');
+      const loadBtn = makeHistoryBtn('Load', '/static/icons/solid/folder-open.svg');
       loadBtn.addEventListener('click', () => loadFromHistory(entry));
       actions.appendChild(loadBtn);
 
-      const reprintBtn = makeHistoryBtn('Reprint', '↻');
+      const reprintBtn = makeHistoryBtn('Reprint', '/static/icons/solid/print.svg');
       reprintBtn.addEventListener('click', () => {
         reprintBtn.disabled = true;
         reprintBtn.querySelector('.btn-text').textContent = 'Printing…';

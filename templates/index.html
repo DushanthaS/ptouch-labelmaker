@@ -748,6 +748,14 @@
       flex-shrink: 0;
     }
 
+    .btn-icon {
+      width: 14px;
+      height: 14px;
+      object-fit: contain;
+      filter: invert(1) opacity(0.75);
+      flex-shrink: 0;
+    }
+
     .btn-star {
       background: transparent;
       border: none;
@@ -807,22 +815,24 @@
       #diagnosticsBtn {
         font-size: 0;
         padding: 10px 12px;
+        justify-content: center;
       }
 
-      #refreshBtn::before    { content: "↻"; font-size: 16px; }
-      #diagnosticsBtn::before { content: "⚙"; font-size: 16px; }
+      #refreshBtn::before    { content: "↻"; font-size: 18px; }
+      #diagnosticsBtn::before { content: "⚙"; font-size: 18px; }
 
       .history-entry__actions .btn-text {
         display: none;
       }
 
-      .history-entry__actions button[data-icon]::before {
-        content: attr(data-icon);
-        font-size: 15px;
+      .history-entry__actions button {
+        padding: 7px 9px;
+        justify-content: center;
       }
 
-      .history-entry__actions button {
-        padding: 6px 10px;
+      .history-entry__actions .btn-icon {
+        width: 16px;
+        height: 16px;
       }
 
       .icon-browser {
