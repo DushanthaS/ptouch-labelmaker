@@ -52,6 +52,7 @@ from rendering import (
     mm_to_px,
     render_label_png,
     resolve_icon_path,
+    PRINTER_DPI,
 )
 
 STATIC_DIR = os.path.join("/tmp", "ptouch_web")
@@ -424,6 +425,8 @@ def api_preview():
         "file_id":         file_id,
         "height":          img.height,
         "width":           img.width,
+        "width_mm":        round(img.width  * 25.4 / PRINTER_DPI, 1),
+        "height_mm":       round(img.height * 25.4 / PRINTER_DPI, 1),
         "path":            path,
         "font_key":        resolved_font_key,
         "font_size":       actual_font_size,

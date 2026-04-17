@@ -704,7 +704,7 @@
     }
 
     .history-hover-card {
-      position: absolute;
+      position: fixed;
       z-index: 3000;
       background: white;
       border-radius: var(--radius-md);
@@ -795,12 +795,34 @@
 
       .status-bar {
         width: 100%;
+        gap: 8px;
       }
 
       .status-actions {
         margin-left: 0;
-        width: 100%;
-        justify-content: flex-start;
+        gap: 6px;
+      }
+
+      #refreshBtn,
+      #diagnosticsBtn {
+        font-size: 0;
+        padding: 10px 12px;
+      }
+
+      #refreshBtn::before    { content: "↻"; font-size: 16px; }
+      #diagnosticsBtn::before { content: "⚙"; font-size: 16px; }
+
+      .history-entry__actions .btn-text {
+        display: none;
+      }
+
+      .history-entry__actions button[data-icon]::before {
+        content: attr(data-icon);
+        font-size: 15px;
+      }
+
+      .history-entry__actions button {
+        padding: 6px 10px;
       }
 
       .icon-browser {
@@ -817,8 +839,8 @@
         <div class="status-bar" id="statusBlock">
           <span class="badge" id="availBadge">Checking printer…</span>
           <div class="status-actions">
-            <button id="diagnosticsBtn" type="button" hidden>Diagnostics</button>
-            <button id="refreshBtn" type="button">Refresh status</button>
+            <button id="diagnosticsBtn" type="button" hidden aria-label="Diagnostics">Diagnostics</button>
+            <button id="refreshBtn" type="button" aria-label="Refresh printer status">Refresh status</button>
           </div>
         </div>
       </div>
@@ -873,10 +895,14 @@
                 <img id="iconPreview" alt="" {% if not default_icon %}hidden{% endif %} src="{{ url_for('static', filename='icons/' + default_icon) if default_icon else '' }}">
               </div>
               <input id="iconPath" type="hidden" value="{{ default_icon }}">
-              <button type="button" id="openIconPicker">Browse…</button>
-              <button type="button" id="clearIcon" class="secondary">Clear</button>
+              <div class="icon-picker__controls">
+                <div class="icon-picker__buttons">
+                  <button type="button" id="openIconPicker">Browse…</button>
+                  <button type="button" id="clearIcon" class="secondary">Clear</button>
+                </div>
+                <div class="icon-picker__label" id="iconDisplayLabel">{{ default_icon if default_icon else '' }}</div>
+              </div>
             </div>
-            <div class="icon-picker__label" id="iconDisplayLabel">{{ default_icon if default_icon else '' }}</div>
             <label for="iconSize" style="margin-top:6px">Icon size</label>
             <div class="size-control">
               <input type="range" id="iconSize" min="{{ icon_min_height }}" max="{{ icon_min_height }}" value="{{ icon_min_height }}">

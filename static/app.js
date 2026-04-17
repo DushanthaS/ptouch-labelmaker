@@ -412,7 +412,7 @@
 
     const noticeHtml = notices.length ? `<div class="muted" style="margin-bottom:6px">${notices.join('<br>')}</div>` : '';
     if (elements.previewPane) {
-      elements.previewPane.innerHTML = `<div class="muted" style="margin-bottom:6px">${data.width}×${data.height}px preview (1‑bit B/W)</div>${noticeHtml}<img src="${imgUrl}" alt="preview" />`;
+      elements.previewPane.innerHTML = `<div class="muted" style="margin-bottom:6px">${data.width}×${data.height}px (${data.width_mm}×${data.height_mm}mm) preview (1‑bit B/W)</div>${noticeHtml}<img src="${imgUrl}" alt="preview" />`;
       const previewImg = elements.previewPane.querySelector('img');
       if (previewImg) {
         previewImg.addEventListener('mouseenter', () => showHoverCard(previewImg, `/preview/${currentFileId}.png`, Date.now() / 1000));
@@ -471,13 +471,9 @@
     img.alt = 'label preview';
     if (!hoverCard.contains(img)) hoverCard.appendChild(img);
     hoverCard.hidden = false;
-
-    const rect = anchorEl.getBoundingClientRect();
-    const cardW = 320;
-    let left = rect.right + 12;
-    if (left + cardW > window.innerWidth - 12) left = rect.left - cardW - 12;
-    hoverCard.style.left = `${Math.max(8, left)}px`;
-    hoverCard.style.top  = `${Math.max(8, rect.top + window.scrollY)}px`;
+    hoverCard.style.left = '50%';
+    hoverCard.style.top  = '50%';
+    hoverCard.style.transform = 'translate(-50%, -50%)';
   }
 
   function hideHoverCard() {
@@ -529,34 +525,36 @@
     const actions = document.createElement('div');
     actions.className = 'history-entry__actions';
 
+    function makeHistoryBtn(label, icon) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondary';
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('title', label);
+      btn.dataset.icon = icon;
+      btn.innerHTML = `<span class="btn-text">${label}</span>`;
+      return btn;
+    }
+
     if (entry.starred) {
       // Library entry: Load, Reprint, Delete
-      const loadBtn = document.createElement('button');
-      loadBtn.type = 'button';
-      loadBtn.className = 'secondary';
-      loadBtn.textContent = 'Load';
+      const loadBtn = makeHistoryBtn('Load', '↩');
       loadBtn.addEventListener('click', () => loadFromHistory(entry));
       actions.appendChild(loadBtn);
 
-      const reprintBtn = document.createElement('button');
-      reprintBtn.type = 'button';
-      reprintBtn.className = 'secondary';
-      reprintBtn.textContent = 'Reprint';
+      const reprintBtn = makeHistoryBtn('Reprint', '↻');
       reprintBtn.addEventListener('click', () => {
         reprintBtn.disabled = true;
-        reprintBtn.textContent = 'Printing…';
+        reprintBtn.querySelector('.btn-text').textContent = 'Printing…';
         reprintFromHistory(entry).catch((err) => {
           reprintBtn.disabled = false;
-          reprintBtn.textContent = 'Reprint';
+          reprintBtn.querySelector('.btn-text').textContent = 'Reprint';
           window.alert(`Reprint failed: ${err instanceof Error ? err.message : err}`);
         });
       });
       actions.appendChild(reprintBtn);
 
-      const deleteBtn = document.createElement('button');
-      deleteBtn.type = 'button';
-      deleteBtn.className = 'secondary';
-      deleteBtn.textContent = 'Delete';
+      const deleteBtn = makeHistoryBtn('Delete', '✕');
       deleteBtn.addEventListener('click', () => {
         deleteBtn.disabled = true;
         fetch(`/api/history/${entry.id}`, { method: 'DELETE' })
@@ -569,10 +567,7 @@
       actions.appendChild(deleteBtn);
     } else {
       // Recent entry: Save, Load, Reprint
-      const saveBtn = document.createElement('button');
-      saveBtn.type = 'button';
-      saveBtn.className = 'secondary';
-      saveBtn.textContent = 'Save';
+      const saveBtn = makeHistoryBtn('Save', '★');
       saveBtn.addEventListener('click', () => {
         saveBtn.disabled = true;
         fetch(`/api/history/${entry.id}/star`, {
@@ -586,23 +581,17 @@
       });
       actions.appendChild(saveBtn);
 
-      const loadBtn = document.createElement('button');
-      loadBtn.type = 'button';
-      loadBtn.className = 'secondary';
-      loadBtn.textContent = 'Load';
+      const loadBtn = makeHistoryBtn('Load', '↩');
       loadBtn.addEventListener('click', () => loadFromHistory(entry));
       actions.appendChild(loadBtn);
 
-      const reprintBtn = document.createElement('button');
-      reprintBtn.type = 'button';
-      reprintBtn.className = 'secondary';
-      reprintBtn.textContent = 'Reprint';
+      const reprintBtn = makeHistoryBtn('Reprint', '↻');
       reprintBtn.addEventListener('click', () => {
         reprintBtn.disabled = true;
-        reprintBtn.textContent = 'Printing…';
+        reprintBtn.querySelector('.btn-text').textContent = 'Printing…';
         reprintFromHistory(entry).catch((err) => {
           reprintBtn.disabled = false;
-          reprintBtn.textContent = 'Reprint';
+          reprintBtn.querySelector('.btn-text').textContent = 'Reprint';
           window.alert(`Reprint failed: ${err instanceof Error ? err.message : err}`);
         });
       });
