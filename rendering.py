@@ -373,7 +373,7 @@ def render_label_png(
         width += text_width
     width = max(1, width + padding)
     if max_width is not None:
-        width = min(width, max_width)
+        width = max(width, max_width)
 
     img = Image.new("L", (width, height), color=255)
     draw = ImageDraw.Draw(img)
