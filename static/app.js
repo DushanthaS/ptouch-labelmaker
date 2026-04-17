@@ -443,20 +443,60 @@
     return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   }
 
+  const ICON_FALLBACK_QR   = '/static/icons/solid/qrcode.svg';
+  const ICON_FALLBACK_FONT = '/static/icons/solid/font.svg';
+
+  function entryIconUrl(entry) {
+    if (entry.icon) return iconPathToUrl(entry.icon);
+    if (entry.url)  return ICON_FALLBACK_QR;
+    return ICON_FALLBACK_FONT;
+  }
+
+  // Shared hover-preview card
+  const hoverCard = document.createElement('div');
+  hoverCard.className = 'history-hover-card';
+  hoverCard.hidden = true;
+  document.body.appendChild(hoverCard);
+  let hoverHideTimer = null;
+
+  function showHoverCard(anchorEl, previewUrl, createdAt) {
+    clearTimeout(hoverHideTimer);
+    const img = hoverCard.querySelector('img') || document.createElement('img');
+    img.src = `${previewUrl}?ts=${Math.floor((createdAt || 0) * 1000)}`;
+    img.alt = 'label preview';
+    if (!hoverCard.contains(img)) hoverCard.appendChild(img);
+    hoverCard.hidden = false;
+
+    const rect = anchorEl.getBoundingClientRect();
+    const cardW = 320;
+    let left = rect.right + 12;
+    if (left + cardW > window.innerWidth - 12) left = rect.left - cardW - 12;
+    hoverCard.style.left = `${Math.max(8, left)}px`;
+    hoverCard.style.top  = `${Math.max(8, rect.top + window.scrollY)}px`;
+  }
+
+  function hideHoverCard() {
+    hoverHideTimer = setTimeout(() => { hoverCard.hidden = true; }, 120);
+  }
+
   function buildHistoryRow(entry, showTime) {
     const row = document.createElement('div');
     row.className = 'history-entry';
 
-    // Thumbnail
+    // Thumbnail — shows icon/QR/font indicator; hover reveals full label preview
     const thumb = document.createElement('div');
     thumb.className = 'history-entry__thumb';
+    const iconUrl = entryIconUrl(entry);
+    const iconImg = document.createElement('img');
+    iconImg.src = iconUrl;
+    iconImg.alt = '';
+    iconImg.className = 'history-entry__thumb-icon';
+    thumb.appendChild(iconImg);
+
     if (entry.preview_url) {
-      const img = document.createElement('img');
-      img.src = `${entry.preview_url}?ts=${Math.floor((entry.created_at || 0) * 1000)}`;
-      img.alt = 'preview';
-      thumb.appendChild(img);
-    } else {
-      thumb.classList.add('history-entry__thumb--empty');
+      thumb.style.cursor = 'pointer';
+      thumb.addEventListener('mouseenter', () => showHoverCard(thumb, entry.preview_url, entry.created_at));
+      thumb.addEventListener('mouseleave', hideHoverCard);
     }
     row.appendChild(thumb);
 

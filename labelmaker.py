@@ -61,7 +61,20 @@ LABEL_STORE_DIR = os.environ.get(
     "LABEL_STORE_DIR",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "label_store"),
 )
-os.makedirs(LABEL_STORE_DIR, exist_ok=True)
+try:
+    os.makedirs(LABEL_STORE_DIR, exist_ok=True)
+except OSError as _exc:
+    raise SystemExit(
+        f"ERROR: Cannot create label store directory '{LABEL_STORE_DIR}': {_exc}\n"
+        f"Ensure the parent directory exists and is writable, or set LABEL_STORE_DIR "
+        f"to a writable path."
+    ) from _exc
+if not os.access(LABEL_STORE_DIR, os.R_OK | os.W_OK):
+    raise SystemExit(
+        f"ERROR: Label store directory '{LABEL_STORE_DIR}' is not readable/writable.\n"
+        f"Fix with: chmod 755 '{LABEL_STORE_DIR}'\n"
+        f"Or set LABEL_STORE_DIR to a writable path."
+    )
 
 HISTORY_MAX_UNSTARRED = 15
 

@@ -18,6 +18,10 @@ env/
 # Temporary label files
 /tmp/ptouch_web/
 
+# Label store contents (keep the directory itself via .gitkeep)
+/label_store/*
+!/label_store/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db
