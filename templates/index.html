@@ -810,6 +810,10 @@
               <input id="fontSize" type="number" value="24" min="8" max="96">
             </div>
             <div class="field">
+              <label for="labelWidth">Label width (mm)</label>
+              <input id="labelWidth" type="number" min="10" step="1" placeholder="auto">
+            </div>
+            <div class="field">
               <label for="qrSize">QR size</label>
               <div class="size-control">
                 <input type="range" id="qrSize" min="{{ qr_min_size }}" max="{{ qr_min_size }}" value="{{ qr_min_size }}">

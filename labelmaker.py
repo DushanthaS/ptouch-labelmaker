@@ -45,6 +45,7 @@ from rendering import (
     clamp_qr_size,
     get_border_options,
     render_homebox_label,
+    mm_to_px,
     render_label_png,
     resolve_icon_path,
 )
@@ -269,6 +270,14 @@ def api_preview():
     except (TypeError, ValueError):
         icon_size_val = None
 
+    label_width_mm_raw = data.get('label_width_mm')
+    try:
+        label_width_mm = float(label_width_mm_raw) if label_width_mm_raw is not None else None
+    except (TypeError, ValueError):
+        label_width_mm = None
+    if label_width_mm is not None and label_width_mm <= 0:
+        return jsonify({"error": "label_width_mm must be greater than 0"}), 400
+
     if font_key not in FONT_LIBRARY:
         return jsonify({"error": f"Unknown font selection '{font_key}'."}), 400
     if border_style not in BORDER_STYLES:
@@ -295,6 +304,8 @@ def api_preview():
     resolved_icon_size = clamp_icon_height(icon_size_val, max_h, padding) if resolved_icon else 0
     resolved_qr_size   = clamp_qr_size(qr_size_val, max_h, padding)
 
+    max_width_px = mm_to_px(label_width_mm) if label_width_mm is not None else None
+
     img, actual_font_size = render_label_png(
         text=text,
         url=url,
@@ -305,6 +316,7 @@ def api_preview():
         border_style=resolved_border,
         icon_key=resolved_icon,
         icon_size=resolved_icon_size,
+        max_width=max_width_px,
     )
 
     file_id = str(uuid.uuid4())
@@ -312,16 +324,17 @@ def api_preview():
     img.save(path, format="PNG", optimize=True)
 
     return jsonify({
-        "file_id":      file_id,
-        "height":       img.height,
-        "width":        img.width,
-        "path":         path,
-        "font_key":     resolved_font_key,
-        "font_size":    actual_font_size,
-        "border_style": resolved_border,
-        "icon":         resolved_icon,
-        "qr_size":      resolved_qr_size,
-        "icon_size":    resolved_icon_size,
+        "file_id":         file_id,
+        "height":          img.height,
+        "width":           img.width,
+        "path":            path,
+        "font_key":        resolved_font_key,
+        "font_size":       actual_font_size,
+        "border_style":    resolved_border,
+        "icon":            resolved_icon,
+        "qr_size":         resolved_qr_size,
+        "icon_size":       resolved_icon_size,
+        "label_width_mm":  label_width_mm,
     })
 
 

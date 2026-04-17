@@ -69,6 +69,7 @@
     historyCard: $('historyCard'),
     historyList: $('historyList'),
     clearHistoryBtn: $('clearHistoryBtn'),
+    labelWidth: $('labelWidth'),
   };
   elements.iconModalBackdrop = elements.iconModal ? elements.iconModal.querySelector('[data-close]') : null;
 
@@ -335,6 +336,9 @@
 
     const iconKey = elements.iconPath ? normalizeIconPath(elements.iconPath.value) : '';
 
+    const labelWidthRaw = elements.labelWidth ? elements.labelWidth.value.trim() : '';
+    const labelWidthMm = labelWidthRaw !== '' ? parseFloat(labelWidthRaw) : null;
+
     const res = await fetch('/api/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -347,6 +351,7 @@
         border_style: borderStyle,
         icon: iconKey,
         icon_size: currentIconSize,
+        label_width_mm: labelWidthMm,
       }),
     });
     const data = await res.json();

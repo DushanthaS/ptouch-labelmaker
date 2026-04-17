@@ -137,6 +137,17 @@ ICON_RESAMPLE = Image.NEAREST
 QR_MIN_SIZE = 24
 QR_DEFAULT_RATIO = 0.85
 
+# ---------------------------------------------------------------------------
+# Printer geometry
+# ---------------------------------------------------------------------------
+
+PRINTER_DPI = 180  # P-Touch standard print resolution
+
+
+def mm_to_px(mm: float) -> int:
+    """Convert millimetres to pixels at PRINTER_DPI."""
+    return max(1, round(mm * PRINTER_DPI / 25.4))
+
 
 def resolve_icon_path(
     rel_path: Optional[str], allow_directory: bool = False
@@ -286,6 +297,7 @@ def render_label_png(
     border_style: str = BORDER_DEFAULT,
     icon_key: str = ICON_DEFAULT,
     icon_size: Optional[int] = None,
+    max_width: Optional[int] = None,
 ) -> Tuple[Image.Image, int]:
     height = max(24, max_height)
     qr_actual_size = clamp_qr_size(qr_size, height, padding)
@@ -305,6 +317,19 @@ def render_label_png(
     draw_tmp = ImageDraw.Draw(Image.new("L", (1, 1)))
     font = load_font(font_size, font_key=font_key)
 
+    if max_width is not None:
+        icon_w_for_wrap = icon_img.width if icon_img is not None else 0
+        qr_w_for_wrap = qr_img.width if qr_img is not None else 0
+        fixed_cols = padding  # leading padding
+        if icon_w_for_wrap:
+            fixed_cols += icon_w_for_wrap + padding
+        if qr_w_for_wrap:
+            fixed_cols += qr_w_for_wrap + padding
+        fixed_cols += padding  # trailing padding
+        wrap_limit = max(1, max_width - fixed_cols)
+    else:
+        wrap_limit = 9999
+
     lines = []
     for raw_line in (text or "").splitlines() or [""]:
         line = raw_line.strip("\r")
@@ -315,7 +340,7 @@ def render_label_png(
         cur = []
         for w in words:
             test = (" ".join(cur + [w])).strip()
-            if measure_text(draw_tmp, test, font)[0] > 9999:
+            if measure_text(draw_tmp, test, font)[0] > wrap_limit:
                 lines.append(" ".join(cur))
                 cur = [w]
             else:
@@ -347,6 +372,8 @@ def render_label_png(
     if text_width > 0:
         width += text_width
     width = max(1, width + padding)
+    if max_width is not None:
+        width = min(width, max_width)
 
     img = Image.new("L", (width, height), color=255)
     draw = ImageDraw.Draw(img)
