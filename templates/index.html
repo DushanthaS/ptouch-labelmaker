@@ -871,13 +871,12 @@
             <div class="icon-picker__row">
               <div class="icon-picker__preview">
                 <img id="iconPreview" alt="" {% if not default_icon %}hidden{% endif %} src="{{ url_for('static', filename='icons/' + default_icon) if default_icon else '' }}">
-                <span id="iconPreviewPlaceholder"{% if default_icon %} hidden{% endif %}></span>
               </div>
               <input id="iconPath" type="hidden" value="{{ default_icon }}">
               <button type="button" id="openIconPicker">Browse…</button>
               <button type="button" id="clearIcon" class="secondary">Clear</button>
             </div>
-            <div class="icon-picker__label" id="iconDisplayLabel">{{ default_icon if default_icon else 'No icon selected' }}</div>
+            <div class="icon-picker__label" id="iconDisplayLabel">{{ default_icon if default_icon else '' }}</div>
             <label for="iconSize" style="margin-top:6px">Icon size</label>
             <div class="size-control">
               <input type="range" id="iconSize" min="{{ icon_min_height }}" max="{{ icon_min_height }}" value="{{ icon_min_height }}">

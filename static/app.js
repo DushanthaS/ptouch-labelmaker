@@ -43,7 +43,6 @@
     iconDisplayLabel: $('iconDisplayLabel'),
     iconPath: $('iconPath'),
     iconPreview: $('iconPreview'),
-    iconPreviewPlaceholder: $('iconPreviewPlaceholder'),
     openIconPicker: $('openIconPicker'),
     clearIcon: $('clearIcon'),
     iconModal: $('iconModal'),
@@ -190,17 +189,15 @@
     currentIconPath = normalized;
 
     if (elements.iconPath) elements.iconPath.value = normalized;
-    if (elements.iconDisplayLabel) elements.iconDisplayLabel.textContent = displayNameFromPath(normalized);
+    if (elements.iconDisplayLabel) elements.iconDisplayLabel.textContent = normalized ? displayNameFromPath(normalized) : '';
 
     if (elements.iconPreview) {
       if (url) {
         elements.iconPreview.src = url;
         elements.iconPreview.hidden = false;
-        if (elements.iconPreviewPlaceholder) elements.iconPreviewPlaceholder.hidden = true;
       } else {
         elements.iconPreview.src = '';
         elements.iconPreview.hidden = true;
-        if (elements.iconPreviewPlaceholder) elements.iconPreviewPlaceholder.hidden = false;
       }
     }
 
@@ -321,7 +318,8 @@
       } else if (hasError) {
         elements.hint.textContent = `Fix the printer issue: ${errorMessage}`;
       } else {
-        elements.hint.textContent = `Output height will be clamped to ${maxHeight}px`;
+        const tapeInfo = data.media_width ? `Tape: ${data.media_width} · ` : '';
+        elements.hint.textContent = `${tapeInfo}Max height: ${maxHeight}px`;
       }
     }
 
