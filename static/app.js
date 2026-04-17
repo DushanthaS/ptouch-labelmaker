@@ -536,7 +536,19 @@
     }
 
     if (entry.starred) {
-      // Library entry: Load, Reprint, Delete
+      // Library entry: Delete, Load, Reprint (print rightmost)
+      const deleteBtn = makeHistoryBtn('Delete', '/static/icons/solid/trash.svg');
+      deleteBtn.addEventListener('click', () => {
+        deleteBtn.disabled = true;
+        fetch(`/api/history/${entry.id}`, { method: 'DELETE' })
+          .then(() => renderHistory())
+          .catch((err) => {
+            deleteBtn.disabled = false;
+            console.error('Delete failed', err);
+          });
+      });
+      actions.appendChild(deleteBtn);
+
       const loadBtn = makeHistoryBtn('Load', '/static/icons/solid/folder-open.svg');
       loadBtn.addEventListener('click', () => loadFromHistory(entry));
       actions.appendChild(loadBtn);
@@ -552,18 +564,6 @@
         });
       });
       actions.appendChild(reprintBtn);
-
-      const deleteBtn = makeHistoryBtn('Delete', '/static/icons/solid/trash.svg');
-      deleteBtn.addEventListener('click', () => {
-        deleteBtn.disabled = true;
-        fetch(`/api/history/${entry.id}`, { method: 'DELETE' })
-          .then(() => renderHistory())
-          .catch((err) => {
-            deleteBtn.disabled = false;
-            console.error('Delete failed', err);
-          });
-      });
-      actions.appendChild(deleteBtn);
     } else {
       // Recent entry: Save, Load, Reprint
       const saveBtn = makeHistoryBtn('Save', '/static/icons/solid/floppy-disk.svg');
