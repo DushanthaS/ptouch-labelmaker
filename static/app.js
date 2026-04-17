@@ -66,6 +66,8 @@
     iconifySearchBtn: $('iconifySearchBtn'),
     iconifyGrid: $('iconifyGrid'),
     iconifyState: $('iconifyState'),
+    libraryCard: $('libraryCard'),
+    libraryList: $('libraryList'),
     historyCard: $('historyCard'),
     historyList: $('historyList'),
     clearHistoryBtn: $('clearHistoryBtn'),
@@ -417,25 +419,8 @@
 
   // ── History ──────────────────────────────────────────────────────────────
 
-  const HISTORY_KEY = 'ptouch_history';
-  const HISTORY_MAX = 30;
-
-  function loadHistory() {
-    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) { return []; }
-  }
-
-  function persistHistory(history) {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-  }
-
-  function addHistoryEntry(entry) {
-    const history = loadHistory();
-    history.unshift(entry);
-    if (history.length > HISTORY_MAX) history.length = HISTORY_MAX;
-    persistHistory(history);
-  }
-
   function historyDisplayLabel(entry) {
+    if (entry.name) return entry.name;
     const parts = [];
     const firstLine = (entry.text || '').split('\n')[0].trim();
     if (firstLine) parts.push(firstLine);
@@ -448,64 +433,170 @@
   }
 
   function formatTime(ts) {
-    const diff = Date.now() - ts;
+    const diff = Date.now() - ts * 1000;
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'just now';
     if (mins < 60) return `${mins}m ago`;
     const hrs = Math.floor(mins / 60);
     if (hrs < 24) return `${hrs}h ago`;
-    const d = new Date(ts);
+    const d = new Date(ts * 1000);
     return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   }
 
-  function renderHistory() {
-    const history = loadHistory();
-    if (!elements.historyCard || !elements.historyList) return;
-    if (history.length === 0) {
-      elements.historyCard.hidden = true;
-      return;
+  function buildHistoryRow(entry, showTime) {
+    const row = document.createElement('div');
+    row.className = 'history-entry';
+
+    // Thumbnail
+    const thumb = document.createElement('div');
+    thumb.className = 'history-entry__thumb';
+    if (entry.preview_url) {
+      const img = document.createElement('img');
+      img.src = `${entry.preview_url}?ts=${Math.floor((entry.created_at || 0) * 1000)}`;
+      img.alt = 'preview';
+      thumb.appendChild(img);
+    } else {
+      thumb.classList.add('history-entry__thumb--empty');
     }
-    elements.historyCard.hidden = false;
-    elements.historyList.innerHTML = '';
-    history.forEach((entry) => {
-      const row = document.createElement('div');
-      row.className = 'history-entry';
+    row.appendChild(thumb);
 
-      const meta = document.createElement('div');
-      meta.className = 'history-entry__meta';
+    // Meta
+    const metaDiv = document.createElement('div');
+    metaDiv.className = 'history-entry__meta';
 
-      const label = document.createElement('div');
-      label.className = 'history-entry__label';
-      label.textContent = historyDisplayLabel(entry);
+    // Name — click to edit
+    const nameEl = document.createElement('div');
+    nameEl.className = 'history-entry__name history-entry__label';
+    nameEl.title = 'Click to rename';
+    nameEl.textContent = historyDisplayLabel(entry);
+    nameEl.addEventListener('click', () => startRename(entry, nameEl));
+    metaDiv.appendChild(nameEl);
 
-      const time = document.createElement('div');
-      time.className = 'history-entry__time';
-      time.textContent = formatTime(entry.timestamp);
+    if (showTime && entry.created_at) {
+      const timeEl = document.createElement('div');
+      timeEl.className = 'history-entry__time';
+      timeEl.textContent = formatTime(entry.created_at);
+      metaDiv.appendChild(timeEl);
+    }
+    row.appendChild(metaDiv);
 
-      meta.appendChild(label);
-      meta.appendChild(time);
+    // Action buttons
+    const actions = document.createElement('div');
+    actions.className = 'history-entry__actions';
 
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'secondary';
-      btn.textContent = 'Reprint';
-      btn.addEventListener('click', () => {
-        btn.disabled = true;
-        btn.textContent = 'Printing…';
-        reprintFromHistory(entry).catch((err) => {
-          btn.disabled = false;
-          btn.textContent = 'Reprint';
-          window.alert(`Reprint failed: ${err instanceof Error ? err.message : err}`);
-        });
+    // Star / unstar
+    const starBtn = document.createElement('button');
+    starBtn.type = 'button';
+    starBtn.className = `btn-star${entry.starred ? ' is-starred' : ''}`;
+    starBtn.title = entry.starred ? 'Remove from Library' : 'Add to Library';
+    starBtn.textContent = entry.starred ? '★' : '☆';
+    starBtn.addEventListener('click', () => {
+      starBtn.disabled = true;
+      fetch(`/api/history/${entry.id}/star`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ starred: !entry.starred, name: entry.name || null }),
+      }).then(() => renderHistory()).catch(console.error);
+    });
+    actions.appendChild(starBtn);
+
+    // Load settings
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.className = 'secondary';
+    loadBtn.textContent = 'Load';
+    loadBtn.addEventListener('click', () => loadFromHistory(entry));
+    actions.appendChild(loadBtn);
+
+    // Reprint
+    const reprintBtn = document.createElement('button');
+    reprintBtn.type = 'button';
+    reprintBtn.className = 'secondary';
+    reprintBtn.textContent = 'Reprint';
+    reprintBtn.addEventListener('click', () => {
+      reprintBtn.disabled = true;
+      reprintBtn.textContent = 'Printing…';
+      reprintFromHistory(entry).catch((err) => {
+        reprintBtn.disabled = false;
+        reprintBtn.textContent = 'Reprint';
+        window.alert(`Reprint failed: ${err instanceof Error ? err.message : err}`);
       });
+    });
+    actions.appendChild(reprintBtn);
 
-      row.appendChild(meta);
-      row.appendChild(btn);
-      elements.historyList.appendChild(row);
+    row.appendChild(actions);
+    return row;
+  }
+
+  function startRename(entry, nameEl) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'history-entry__name-input';
+    input.value = entry.name || '';
+    input.placeholder = historyDisplayLabel(entry);
+    nameEl.replaceWith(input);
+    input.focus();
+
+    function commit() {
+      const newName = input.value.trim() || null;
+      entry.name = newName;
+      fetch(`/api/history/${entry.id}/star`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ starred: entry.starred, name: newName }),
+      }).then(() => renderHistory()).catch(console.error);
+    }
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.removeEventListener('blur', commit); renderHistory(); }
     });
   }
 
+  function loadFromHistory(entry) {
+    if (elements.labelText) elements.labelText.value = entry.text || '';
+    if (elements.labelUrl) elements.labelUrl.value = entry.url || '';
+    if (elements.fontSize) elements.fontSize.value = String(entry.font_size || 24);
+    if (elements.fontSelect) elements.fontSelect.value = entry.font || defaultFontKey;
+    if (elements.borderSelect) elements.borderSelect.value = entry.border_style || defaultBorderStyle;
+    if (elements.labelWidth) elements.labelWidth.value = entry.label_width_mm != null ? String(entry.label_width_mm) : '';
+    currentIconSize = entry.icon_size || iconMinHeight;
+    currentQrSize = entry.qr_size || qrMinSize;
+    if (elements.iconSizeInput) { elements.iconSizeInput.value = String(currentIconSize); updateIconSizeDisplay(); }
+    if (elements.qrSizeInput) { elements.qrSizeInput.value = String(currentQrSize); updateQrSizeDisplay(); }
+    updateIconUi(entry.icon || '', { url: entry.icon ? iconPathToUrl(entry.icon) : null });
+    currentFileId = null;
+    if (elements.printBtn) elements.printBtn.disabled = !printerAvailable || hasError;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function renderHistory() {
+    try {
+      const res = await fetch('/api/history');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const starred = data.starred || [];
+      const recent = data.recent || [];
+
+      if (elements.libraryCard) elements.libraryCard.hidden = starred.length === 0;
+      if (elements.libraryList) {
+        elements.libraryList.innerHTML = '';
+        starred.forEach((entry) => elements.libraryList.appendChild(buildHistoryRow(entry, false)));
+      }
+
+      if (elements.historyCard) elements.historyCard.hidden = recent.length === 0;
+      if (elements.historyList) {
+        elements.historyList.innerHTML = '';
+        recent.forEach((entry) => elements.historyList.appendChild(buildHistoryRow(entry, true)));
+      }
+    } catch (err) {
+      console.error('Failed to load history', err);
+    }
+  }
+
   function currentPrintParams() {
+    const labelWidthRaw = elements.labelWidth ? elements.labelWidth.value.trim() : '';
     return {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       timestamp: Date.now(),
@@ -517,6 +608,7 @@
       icon: elements.iconPath ? normalizeIconPath(elements.iconPath.value) : '',
       icon_size: currentIconSize,
       qr_size: currentQrSize,
+      label_width_mm: labelWidthRaw !== '' ? parseFloat(labelWidthRaw) : null,
     };
   }
 
@@ -531,18 +623,7 @@
 
   async function reprintFromHistory(entry) {
     if (!printerAvailable || hasError) throw new Error('Printer not ready');
-
-    // Fill form with saved values
-    if (elements.labelText) elements.labelText.value = entry.text || '';
-    if (elements.labelUrl) elements.labelUrl.value = entry.url || '';
-    if (elements.fontSize) elements.fontSize.value = String(entry.font_size || 24);
-    if (elements.fontSelect) elements.fontSelect.value = entry.font || defaultFontKey;
-    if (elements.borderSelect) elements.borderSelect.value = entry.border_style || defaultBorderStyle;
-    currentIconSize = entry.icon_size || iconMinHeight;
-    currentQrSize = entry.qr_size || qrMinSize;
-    if (elements.iconSizeInput) { elements.iconSizeInput.value = String(currentIconSize); updateIconSizeDisplay(); }
-    if (elements.qrSizeInput) { elements.qrSizeInput.value = String(currentQrSize); updateQrSizeDisplay(); }
-    updateIconUi(entry.icon || '', { url: entry.icon ? iconPathToUrl(entry.icon) : null });
+    loadFromHistory(entry);
 
     // Regenerate preview then print
     await doPreview();
@@ -556,14 +637,16 @@
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || data.stderr || `HTTP ${res.status}`);
 
-    addHistoryEntry({ ...entry, timestamp: Date.now() });
     renderHistory();
     setPrintingState();
   }
 
   async function doPrint() {
-    if (!currentFileId || !printerAvailable || hasError) return;
-    const params = currentPrintParams();
+    if (!printerAvailable || hasError) return;
+    if (!currentFileId) {
+      await doPreview();
+      if (!currentFileId) return;
+    }
     const res = await fetch('/api/print', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -571,7 +654,6 @@
     });
     const data = await res.json();
     if (res.ok && data.ok) {
-      addHistoryEntry(params);
       renderHistory();
       setPrintingState();
     } else {
@@ -982,9 +1064,19 @@
   }
 
   if (elements.clearHistoryBtn) {
-    elements.clearHistoryBtn.addEventListener('click', () => {
-      persistHistory([]);
-      renderHistory();
+    elements.clearHistoryBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/history');
+        if (!res.ok) return;
+        const data = await res.json();
+        const recent = data.recent || [];
+        await Promise.all(recent.map((entry) =>
+          fetch(`/api/history/${entry.id}`, { method: 'DELETE' })
+        ));
+        renderHistory();
+      } catch (err) {
+        console.error('Failed to clear history', err);
+      }
     });
   }
 

@@ -4,22 +4,26 @@
 Flask web app for designing, previewing, and printing Brother P-Touch labels.
 
 Routes:
-  GET  /                       — main UI
-  GET  /api/printer_status     — live printer status (polled by frontend)
-  GET  /api/icons              — browse icon directory tree
-  GET  /api/icons/search       — search icon files by name
-  GET  /api/iconify/search     — search Iconify CDN
-  POST /api/iconify/download   — download and cache an Iconify SVG
-  POST /api/preview            — render label PNG, return file_id
-  POST /api/print              — send previously-rendered PNG to printer
-  GET  /preview/<file_id>.png  — serve a rendered preview image
-  GET  /api/homebox/print      — Homebox webhook: render + print in one step
+  GET  /                            — main UI
+  GET  /api/printer_status          — live printer status (polled by frontend)
+  GET  /api/icons                   — browse icon directory tree
+  GET  /api/icons/search            — search icon files by name
+  GET  /api/iconify/search          — search Iconify CDN
+  POST /api/iconify/download        — download and cache an Iconify SVG
+  POST /api/preview                 — render label PNG, return file_id
+  POST /api/print                   — send previously-rendered PNG to printer
+  GET  /preview/<file_id>.png       — serve a rendered preview image
+  GET  /api/history                 — list saved label history (starred + recent)
+  POST /api/history/<id>/star       — star/unstar a label and optionally rename it
+  DELETE /api/history/<id>          — delete a label from history
+  GET  /api/homebox/print           — Homebox webhook: render + print in one step
 """
 
 import io
 import json
 import os
 import re
+import shutil
 import time
 import urllib.parse
 import urllib.request
@@ -53,8 +57,62 @@ from rendering import (
 STATIC_DIR = os.path.join("/tmp", "ptouch_web")
 os.makedirs(STATIC_DIR, exist_ok=True)
 
+LABEL_STORE_DIR = os.environ.get(
+    "LABEL_STORE_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "label_store"),
+)
+os.makedirs(LABEL_STORE_DIR, exist_ok=True)
+
+HISTORY_MAX_UNSTARRED = 15
+
 _FILE_ID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 _ICONIFY_NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+
+
+# ---------------------------------------------------------------------------
+# Label store helpers
+# ---------------------------------------------------------------------------
+
+def _entry_dir(entry_id: str) -> str:
+    """Absolute path to the label store directory for one entry."""
+    return os.path.join(LABEL_STORE_DIR, entry_id)
+
+
+def _load_meta(entry_id: str):
+    """Load and return meta.json for one entry, or None on any error."""
+    try:
+        with open(os.path.join(_entry_dir(entry_id), "meta.json"), "r") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
+def _save_label_entry(entry_id: str, meta: dict, png_src: str) -> None:
+    """Persist meta.json and preview.png into label_store/{entry_id}/."""
+    dest = _entry_dir(entry_id)
+    os.makedirs(dest, exist_ok=True)
+    with open(os.path.join(dest, "meta.json"), "w") as fh:
+        json.dump(meta, fh, indent=2)
+    shutil.copy2(png_src, os.path.join(dest, "preview.png"))
+
+
+def _cleanup_label_store() -> None:
+    """Delete oldest unstarred entries beyond HISTORY_MAX_UNSTARRED."""
+    try:
+        entry_ids = [
+            d for d in os.listdir(LABEL_STORE_DIR)
+            if _FILE_ID_RE.match(d) and os.path.isdir(_entry_dir(d))
+        ]
+    except OSError:
+        return
+    unstarred = []
+    for eid in entry_ids:
+        meta = _load_meta(eid)
+        if meta and not meta.get("starred"):
+            unstarred.append((eid, meta.get("created_at", 0)))
+    unstarred.sort(key=lambda x: x[1])  # oldest first
+    for eid, _ in unstarred[:-HISTORY_MAX_UNSTARRED] if len(unstarred) > HISTORY_MAX_UNSTARRED else []:
+        shutil.rmtree(_entry_dir(eid), ignore_errors=True)
 
 app = Flask(__name__)
 
@@ -323,6 +381,32 @@ def api_preview():
     path = os.path.join(STATIC_DIR, f"label_{file_id}.png")
     img.save(path, format="PNG", optimize=True)
 
+    # Write a sidecar JSON so /api/print can persist settings without the
+    # frontend having to resend them.
+    sidecar = {
+        "id":              file_id,
+        "created_at":      time.time(),
+        "starred":         False,
+        "name":            None,
+        "text":            text or "",
+        "url":             url or "",
+        "font_size":       actual_font_size,
+        "font":            resolved_font_key,
+        "border_style":    resolved_border,
+        "icon":            resolved_icon or "",
+        "icon_size":       resolved_icon_size,
+        "qr_size":         resolved_qr_size,
+        "label_width_mm":  label_width_mm,
+        "rendered_width":  img.width,
+        "rendered_height": img.height,
+    }
+    sidecar_path = os.path.join(STATIC_DIR, f"label_{file_id}_meta.json")
+    try:
+        with open(sidecar_path, "w") as fh:
+            json.dump(sidecar, fh)
+    except OSError:
+        pass
+
     return jsonify({
         "file_id":         file_id,
         "height":          img.height,
@@ -366,6 +450,15 @@ def api_print():
 
     code, out, err = run_cmd([PT_CMD, f"--image={path}"])
     ok = (code == 0)
+    if ok:
+        sidecar_path = os.path.join(STATIC_DIR, f"label_{file_id}_meta.json")
+        try:
+            with open(sidecar_path, "r") as fh:
+                meta = json.load(fh)
+        except Exception:
+            meta = {"id": file_id, "created_at": time.time(), "starred": False, "name": None}
+        _save_label_entry(file_id, meta, path)
+        _cleanup_label_store()
     return jsonify({"ok": ok, "returncode": code, "stdout": out, "stderr": err}), (200 if ok else 500)
 
 
@@ -374,9 +467,68 @@ def serve_preview(file_id: str):
     if not _FILE_ID_RE.match(file_id):
         return "Not found", 404
     path = os.path.join(STATIC_DIR, f"label_{file_id}.png")
-    if not os.path.exists(path):
-        return "Not found", 404
-    return send_file(path, mimetype='image/png', as_attachment=False)
+    if os.path.exists(path):
+        return send_file(path, mimetype='image/png', as_attachment=False)
+    store_path = os.path.join(_entry_dir(file_id), "preview.png")
+    if os.path.exists(store_path):
+        return send_file(store_path, mimetype='image/png', as_attachment=False)
+    return "Not found", 404
+
+
+# ---------------------------------------------------------------------------
+# Label history API
+# ---------------------------------------------------------------------------
+
+@app.route('/api/history')
+def api_history():
+    try:
+        entry_ids = [
+            d for d in os.listdir(LABEL_STORE_DIR)
+            if _FILE_ID_RE.match(d) and os.path.isdir(_entry_dir(d))
+        ]
+    except OSError:
+        entry_ids = []
+
+    entries = []
+    for eid in entry_ids:
+        meta = _load_meta(eid)
+        if meta:
+            meta["preview_url"] = f"/preview/{eid}.png"
+            entries.append(meta)
+
+    entries.sort(key=lambda e: e.get("created_at", 0), reverse=True)
+    starred = [e for e in entries if e.get("starred")]
+    recent  = [e for e in entries if not e.get("starred")]
+    return jsonify({"starred": starred, "recent": recent})
+
+
+@app.route('/api/history/<entry_id>/star', methods=['POST'])
+def api_history_star(entry_id: str):
+    if not _FILE_ID_RE.match(entry_id):
+        return jsonify({"error": "Invalid id"}), 400
+    meta = _load_meta(entry_id)
+    if meta is None:
+        return jsonify({"error": "Entry not found"}), 404
+    data = request.get_json(force=True, silent=True) or {}
+    meta["starred"] = bool(data.get("starred", meta.get("starred", False)))
+    name = data.get("name")
+    if name is not None:
+        meta["name"] = str(name).strip() or None
+    try:
+        with open(os.path.join(_entry_dir(entry_id), "meta.json"), "w") as fh:
+            json.dump(meta, fh, indent=2)
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+    meta["preview_url"] = f"/preview/{entry_id}.png"
+    return jsonify(meta)
+
+
+@app.route('/api/history/<entry_id>', methods=['DELETE'])
+def api_history_delete(entry_id: str):
+    if not _FILE_ID_RE.match(entry_id):
+        return jsonify({"error": "Invalid id"}), 400
+    shutil.rmtree(_entry_dir(entry_id), ignore_errors=True)
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------
