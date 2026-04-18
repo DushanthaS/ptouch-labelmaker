@@ -132,7 +132,9 @@ class HomeboxClient:
         Available keys (use as {{key}} in templates):
           name, description, assetId, serialNumber, modelNumber, manufacturer,
           notes, purchaseFrom, purchasePrice, soldPrice, quantity,
-          location, tags, <any custom field name>
+          warrantyExpires, purchaseTime, soldTime,
+          location, tags, collection (from Label-* tag),
+          <any custom field name>
         """
         vars_dict: dict[str, str] = {}
 
@@ -146,6 +148,12 @@ class HomeboxClient:
             val = item.get(key)
             if val is not None:
                 vars_dict[key] = str(val)
+
+        # Date fields — skip Go zero-value sentinel dates (year "0001")
+        for key in ("warrantyExpires", "purchaseTime", "soldTime"):
+            val = (item.get(key) or "").strip()
+            if val and not val.startswith("0001-"):
+                vars_dict[key] = val[:10]  # keep YYYY-MM-DD only
 
         loc = item.get("location")
         if isinstance(loc, dict) and loc.get("name"):
