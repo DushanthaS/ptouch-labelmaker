@@ -392,7 +392,20 @@ def render_label_png(
     max_width: Optional[int] = None,
     element_order: Optional[List[str]] = None,
 ) -> Tuple[Image.Image, int]:
-    height = max(24, max_height)
+    _SS = 2  # supersample scale: render at 2× then downscale for crisp 1-bit output
+    _out_height = max(24, max_height)
+
+    # Scale all pixel dimensions up for supersampled rendering
+    height = _out_height * _SS
+    padding = padding * _SS
+    line_spacing = line_spacing * _SS
+    font_size = font_size * _SS
+    qr_size = qr_size * _SS
+    if icon_size is not None:
+        icon_size = icon_size * _SS
+    if max_width is not None:
+        max_width = max_width * _SS
+
     qr_actual_size = clamp_qr_size(qr_size, height, padding)
     qr_img = make_qr(url.strip(), qr_actual_size) if url and url.strip() else None
 
@@ -426,7 +439,7 @@ def render_label_png(
     parsed_lines = parse_formatted_text(text)
     final_lines: List[ParsedLine] = []
     for pl in parsed_lines:
-        line_size = max(8, font_size + pl.size_delta)
+        line_size = max(8 * _SS, font_size + pl.size_delta * _SS)
         line_font = load_font(line_size, font_key=font_key)
         plain = "".join(s.text for s in pl.spans)
         if not plain:
@@ -452,14 +465,14 @@ def render_label_png(
     def compute_layout(base_size: int):
         widths, heights = [], []
         for pl in final_lines:
-            ls = max(8, base_size + pl.size_delta)
+            ls = max(8 * _SS, base_size + pl.size_delta * _SS)
             w, h = measure_parsed_line(draw_tmp, pl, font_key, ls)
             widths.append(w)
             heights.append(h)
         return max(widths, default=0), heights, sum(heights) + line_spacing * (len(heights) - 1)
 
     text_width, line_heights, total_text_height = compute_layout(font_size)
-    while total_text_height + 2 * padding > height and font_size > 8:
+    while total_text_height + 2 * padding > height and font_size > 8 * _SS:
         font_size -= 1
         text_width, line_heights, total_text_height = compute_layout(font_size)
 
@@ -497,23 +510,28 @@ def render_label_png(
         elif _e == 'text':
             y = (height - total_text_height) // 2
             for _j, pl in enumerate(final_lines):
-                line_size = max(8, font_size + pl.size_delta)
+                line_size = max(8 * _SS, font_size + pl.size_delta * _SS)
                 x_cursor = x
                 for span in pl.spans:
                     if not span.text:
                         continue
                     sf = load_variant(line_size, font_key, bold=span.bold, italic=span.italic)
-                    sw, sh = measure_text(draw, span.text, sf)
+                    sw, _ = measure_text(draw, span.text, sf)
                     draw.text((x_cursor, y), span.text, font=sf, fill=0)
                     if span.underline:
-                        uy = y + sh + 1
-                        draw.rectangle([x_cursor, uy, x_cursor + sw - 1, uy + 1], fill=0)
+                        ul_bottom = draw.textbbox((0, 0), span.text, font=sf)[3]
+                        uy = y + ul_bottom + _SS
+                        draw.rectangle([x_cursor, uy, x_cursor + sw - 1, uy + _SS + 1], fill=0)
                     x_cursor += sw
                 y += line_heights[_j] + line_spacing
         x += _elem_w[_e] + (padding if _i < len(_present) - 1 else 0)
 
     img = apply_border(img, border_style)
-    return img.convert('1', dither=Image.NONE), font_size
+    # Downscale from 2× to final size, then threshold to crisp 1-bit
+    out_w = max(1, img.width // _SS)
+    img = img.resize((out_w, _out_height), Image.LANCZOS)
+    img = img.point(lambda v: 0 if v < 180 else 255)
+    return img.convert('1', dither=Image.NONE), font_size // _SS
 
 
 # ---------------------------------------------------------------------------
