@@ -90,12 +90,25 @@
 
   function setElementOrder(order) {
     if (!elements.elementOrder || !Array.isArray(order) || !order.length) return;
-    const pills = {};
+    const rows = {};
     elements.elementOrder.querySelectorAll('[data-element]').forEach((el) => {
-      pills[el.dataset.element] = el;
+      rows[el.dataset.element] = el;
     });
     order.forEach((key) => {
-      if (pills[key]) elements.elementOrder.appendChild(pills[key]);
+      if (rows[key]) elements.elementOrder.appendChild(rows[key]);
+    });
+    updateElementOrderBtns();
+  }
+
+  function updateElementOrderBtns() {
+    const container = elements.elementOrder;
+    if (!container) return;
+    const rows = Array.from(container.querySelectorAll('[data-element]'));
+    rows.forEach((row, i) => {
+      const upBtn = row.querySelector('[data-dir="up"]');
+      const downBtn = row.querySelector('[data-dir="down"]');
+      if (upBtn) upBtn.disabled = (i === 0);
+      if (downBtn) downBtn.disabled = (i === rows.length - 1);
     });
   }
 
@@ -104,8 +117,24 @@
     if (!container) return;
     let dragSrc = null;
 
-    // ── Mouse / pointer drag ─────────────────────────────────────────────────
+    // ── Up / Down buttons ────────────────────────────────────────────────────
+    container.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-dir]');
+      if (!btn || btn.disabled) return;
+      const row = btn.closest('[data-element]');
+      if (!row) return;
+      if (btn.dataset.dir === 'up' && row.previousElementSibling) {
+        container.insertBefore(row, row.previousElementSibling);
+      } else if (btn.dataset.dir === 'down' && row.nextElementSibling) {
+        container.insertBefore(row.nextElementSibling, row);
+      }
+      updateElementOrderBtns();
+    });
+
+    // ── Mouse / pointer drag (vertical rows) ─────────────────────────────────
     container.addEventListener('dragstart', (e) => {
+      // Don't start drag from a button
+      if (e.target.closest('[data-dir]')) { e.preventDefault(); return; }
       dragSrc = e.target.closest('[data-element]');
       if (!dragSrc) return;
       e.dataTransfer.effectAllowed = 'move';
@@ -116,6 +145,7 @@
       if (dragSrc) dragSrc.classList.remove('dragging');
       dragSrc = null;
       container.querySelectorAll('.drag-over').forEach((el) => el.classList.remove('drag-over'));
+      updateElementOrderBtns();
     });
 
     container.addEventListener('dragover', (e) => {
@@ -132,22 +162,18 @@
       if (!target || !dragSrc || target === dragSrc) return;
       target.classList.remove('drag-over');
       const rect = target.getBoundingClientRect();
-      if (e.clientX < rect.left + rect.width / 2) {
+      if (e.clientY < rect.top + rect.height / 2) {
         container.insertBefore(dragSrc, target);
       } else {
         container.insertBefore(dragSrc, target.nextSibling);
       }
     });
 
-    // ── Touch drag ───────────────────────────────────────────────────────────
-    // Touch events don't bubble through the drag API so we handle them
-    // separately. We hide the dragged pill (opacity) and highlight the target,
-    // then do the DOM reorder on touchend.
+    // ── Touch drag (vertical rows) ───────────────────────────────────────────
     let touchSrc = null;
     let touchOver = null;
 
-    function pillAt(x, y) {
-      // Temporarily reveal the dragged pill so elementFromPoint can see others
+    function rowAt(x, y) {
       if (touchSrc) touchSrc.style.visibility = 'hidden';
       const el = document.elementFromPoint(x, y);
       if (touchSrc) touchSrc.style.visibility = '';
@@ -159,18 +185,19 @@
     }
 
     container.addEventListener('touchstart', (e) => {
-      const pill = e.target.closest('[data-element]');
-      if (!pill) return;
-      touchSrc = pill;
+      // Ignore taps on the up/down buttons
+      if (e.target.closest('[data-dir]')) return;
+      const row = e.target.closest('[data-element]');
+      if (!row) return;
+      touchSrc = row;
       touchSrc.classList.add('dragging');
-      // Don't call preventDefault here — let the browser decide scroll intent.
     }, { passive: true });
 
     container.addEventListener('touchmove', (e) => {
       if (!touchSrc) return;
-      e.preventDefault(); // prevent scroll while dragging a pill
+      e.preventDefault();
       const t = e.touches[0];
-      const target = pillAt(t.clientX, t.clientY);
+      const target = rowAt(t.clientX, t.clientY);
       clearTouchOver();
       if (target && target !== touchSrc) {
         touchOver = target;
@@ -185,7 +212,7 @@
         touchOver.classList.remove('drag-over');
         const t = e.changedTouches[0];
         const rect = touchOver.getBoundingClientRect();
-        if (t.clientX < rect.left + rect.width / 2) {
+        if (t.clientY < rect.top + rect.height / 2) {
           container.insertBefore(touchSrc, touchOver);
         } else {
           container.insertBefore(touchSrc, touchOver.nextSibling);
@@ -193,12 +220,16 @@
       }
       touchSrc = null;
       touchOver = null;
+      updateElementOrderBtns();
     });
 
     container.addEventListener('touchcancel', () => {
       if (touchSrc) { touchSrc.classList.remove('dragging'); touchSrc = null; }
       clearTouchOver();
     });
+
+    // Set initial button states
+    updateElementOrderBtns();
   })();
 
   function normalizeIconPath(value) {

@@ -788,44 +788,90 @@
       margin: 0;
     }
 
-    .element-order {
+    .preview-column {
       display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
+      flex-direction: column;
+      gap: var(--grid-gap);
+      min-width: 0;
     }
 
-    .element-order__pill {
-      display: inline-flex;
+    .element-order-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .element-order__row {
+      display: flex;
       align-items: center;
-      gap: 7px;
-      padding: 8px 14px;
+      gap: 12px;
+      padding: 11px 14px;
       background: var(--surface);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: var(--radius-md);
       cursor: grab;
       user-select: none;
-      font-size: 13px;
-      color: var(--ink);
       transition: border-color 0.15s, background 0.15s;
     }
 
-    .element-order__pill:active {
+    .element-order__row:active {
       cursor: grabbing;
     }
 
-    .element-order__pill.drag-over {
+    .element-order__row.drag-over {
       border-color: var(--accent);
       background: rgba(93, 139, 255, 0.12);
     }
 
-    .element-order__pill.dragging {
+    .element-order__row.dragging {
       opacity: 0.45;
     }
 
     .element-order__handle {
       color: var(--ink-muted);
-      font-size: 15px;
+      font-size: 18px;
       line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .element-order__name {
+      flex: 1;
+      font-size: 14px;
+      color: var(--ink);
+    }
+
+    .element-order__btns {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .element-order__btn {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--ink);
+      font-size: 16px;
+      min-width: 44px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      box-shadow: none;
+      transition: background 0.15s;
+      line-height: 1;
+    }
+
+    .element-order__btn:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .element-order__btn:disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
     }
 
     @media (max-width: 640px) {
@@ -988,23 +1034,6 @@
               <input id="labelWidth" type="number" min="10" step="1" placeholder="auto">
             </div>
           </div>
-          <div class="field">
-            <label>Element order</label>
-            <div class="element-order" id="elementOrder">
-              <div class="element-order__pill" draggable="true" data-element="icon">
-                <span class="element-order__handle">⠿</span>
-                <span>Icon</span>
-              </div>
-              <div class="element-order__pill" draggable="true" data-element="qr">
-                <span class="element-order__handle">⠿</span>
-                <span>QR</span>
-              </div>
-              <div class="element-order__pill" draggable="true" data-element="text">
-                <span class="element-order__handle">⠿</span>
-                <span>Text</span>
-              </div>
-            </div>
-          </div>
         </div>
 
         <div class="actions">
@@ -1013,13 +1042,47 @@
         </div>
       </section>
 
-      <section class="card card--preview">
-        <div class="card__header">
-          <h2 class="card__title">Preview</h2>
-        </div>
-        <div class="preview-frame" id="previewPane">No preview yet. Generate one to see your label.</div>
-        <div id="hint" class="hint"></div>
-      </section>
+      <div class="preview-column">
+        <section class="card">
+          <div class="card__header">
+            <h2 class="card__title">Element Order</h2>
+          </div>
+          <div class="element-order-list" id="elementOrder">
+            <div class="element-order__row" draggable="true" data-element="icon">
+              <span class="element-order__handle">⠿</span>
+              <span class="element-order__name">Icon</span>
+              <div class="element-order__btns">
+                <button class="element-order__btn" data-dir="up" aria-label="Move Icon up" type="button">↑</button>
+                <button class="element-order__btn" data-dir="down" aria-label="Move Icon down" type="button">↓</button>
+              </div>
+            </div>
+            <div class="element-order__row" draggable="true" data-element="qr">
+              <span class="element-order__handle">⠿</span>
+              <span class="element-order__name">QR Code</span>
+              <div class="element-order__btns">
+                <button class="element-order__btn" data-dir="up" aria-label="Move QR Code up" type="button">↑</button>
+                <button class="element-order__btn" data-dir="down" aria-label="Move QR Code down" type="button">↓</button>
+              </div>
+            </div>
+            <div class="element-order__row" draggable="true" data-element="text">
+              <span class="element-order__handle">⠿</span>
+              <span class="element-order__name">Text</span>
+              <div class="element-order__btns">
+                <button class="element-order__btn" data-dir="up" aria-label="Move Text up" type="button">↑</button>
+                <button class="element-order__btn" data-dir="down" aria-label="Move Text down" type="button">↓</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card card--preview">
+          <div class="card__header">
+            <h2 class="card__title">Preview</h2>
+          </div>
+          <div class="preview-frame" id="previewPane">No preview yet. Generate one to see your label.</div>
+          <div id="hint" class="hint"></div>
+        </section>
+      </div>
     </main>
 
     <section class="card" id="libraryCard" hidden>
