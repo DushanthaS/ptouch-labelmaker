@@ -2,6 +2,19 @@
 
 A self-hosted web app for designing and printing labels on a Brother P-Touch label printer. Run it on a Raspberry Pi (or any machine with the printer attached), open it in any browser on your network, and print.
 
+![Desktop UI with label preview](docs/screenshots/ui-preview.png)
+
+<details>
+<summary>More screenshots</summary>
+
+**Desktop — empty state**
+![Desktop UI empty state](docs/screenshots/ui-desktop.png)
+
+**Mobile**
+![Mobile UI](docs/screenshots/ui-mobile.png)
+
+</details>
+
 ## Features
 
 - **Text labels** with automatic font-size scaling to fit the tape width
@@ -9,7 +22,11 @@ A self-hosted web app for designing and printing labels on a Brother P-Touch lab
 - **Icons** — 2,800+ bundled Font Awesome SVGs (solid, regular, brands) plus searchable access to 200,000+ icons via [Iconify](https://iconify.design/)
 - **Font selection** — discovers and lists all fonts installed on the host system
 - **Border styles** — none, thin, thick, double, dashed
+- **Element ordering** — reorder icon, QR code, and text left-to-right using up/down buttons
+- **Label library** — save named label configurations and reload them in one click
+- **Recent history** — last-used labels are remembered and can be reloaded or reprinted
 - **Live printer status** — shows tape width, media type, and error codes
+- **Mobile-friendly** — responsive layout works on phones and tablets
 - Black-and-white 1-bit PNG output matched to your tape's exact pixel height
 
 ## Requirements
@@ -57,6 +74,10 @@ The **Iconify** tab in the icon picker searches the Iconify API in real time. Cl
 ### Adding your own icons
 
 Drop any PNG, SVG, JPG, BMP, or GIF into a subdirectory under `static/icons/` and it will appear in the picker immediately.
+
+## Label library
+
+The **Library** section lets you save the current label configuration under a name. Saved entries can be loaded, overwritten, reprinted, or deleted. The library persists across sessions.
 
 ## Homebox integration
 
