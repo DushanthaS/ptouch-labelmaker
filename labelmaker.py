@@ -21,6 +21,7 @@ Routes:
 
 import io
 import json
+import logging
 import os
 import re
 import shutil
@@ -28,6 +29,12 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 
 def _load_dotenv() -> None:

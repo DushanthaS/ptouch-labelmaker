@@ -193,6 +193,9 @@ def get_client() -> HomeboxClient | None:
     if url and user and pwd:
         _client = HomeboxClient(url, user, pwd)
         log.info("Homebox API client configured for %s", url)
+    else:
+        missing = [k for k, v in [("HOMEBOX_URL", url), ("HOMEBOX_USER", user), ("HOMEBOX_PASSWORD", pwd)] if not v]
+        log.info("Homebox API not configured (missing: %s)", ", ".join(missing))
     return _client
 
 
@@ -204,11 +207,14 @@ def fetch_item_vars(item_url: str) -> dict:
     client = get_client()
     if not client:
         return {}
+    log.info("Fetching Homebox item data for %s", item_url)
     try:
         item = client.get_item_by_url(item_url)
         if not item:
             return {}
-        return client.flatten_item(item)
+        vars_dict = client.flatten_item(item)
+        log.info("Homebox item fetched: name=%r collection=%r", vars_dict.get("name"), vars_dict.get("collection"))
+        return vars_dict
     except Exception as exc:
         log.warning("fetch_item_vars failed: %s", exc)
         return {}
