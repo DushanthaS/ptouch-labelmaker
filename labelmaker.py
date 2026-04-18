@@ -189,15 +189,31 @@ def _find_label_by_name(name: str):
     return None, None
 
 
-def _get_or_create_homebox_template(vars_dict: dict, max_h: int) -> dict:
-    """Return the Homebox Template library entry, creating it on first use."""
-    _, meta = _find_label_by_name(HOMEBOX_TEMPLATE_NAME)
+def _get_or_create_homebox_template(vars_dict: dict, max_h: int, collection: str = "") -> dict:
+    """
+    Return the best matching Homebox template library entry, creating it if needed.
+
+    When a collection name is provided (from the item's Homebox label), looks for
+    "Homebox Template — {collection}" first.  Falls back to the plain
+    "Homebox Template" when no collection is known.  Creates the entry from the
+    built-in default on first use; the user can then edit it in the library.
+    """
+    template_name = f"Homebox Template \u2014 {collection}" if collection else HOMEBOX_TEMPLATE_NAME
+    _, meta = _find_label_by_name(template_name)
     if meta is not None:
         return meta
 
+    # If we have a collection-specific name but no entry yet, fall back to the
+    # base template's *content* (if the user has already customised it) so new
+    # collections inherit those edits as their starting point.
+    base_template = _HOMEBOX_DEFAULT_TEMPLATE
+    if collection:
+        _, base_meta = _find_label_by_name(HOMEBOX_TEMPLATE_NAME)
+        if base_meta is not None:
+            base_template = base_meta
+
     entry_id = str(uuid.uuid4())
 
-    # Render a preview using real data (with sensible fallbacks)
     preview_vars = {
         "URL":                   vars_dict.get("URL") or "https://homebox.example.com/i/1",
         "TitleText":             vars_dict.get("TitleText") or "Asset Name",
@@ -205,24 +221,24 @@ def _get_or_create_homebox_template(vars_dict: dict, max_h: int) -> dict:
         "AdditionalInformation": vars_dict.get("AdditionalInformation") or "",
     }
     img, _ = render_label_png(
-        text=_interpolate(_HOMEBOX_DEFAULT_TEMPLATE["text"], preview_vars),
-        url=_interpolate(_HOMEBOX_DEFAULT_TEMPLATE["url"], preview_vars) or None,
+        text=_interpolate(base_template.get("text", _HOMEBOX_DEFAULT_TEMPLATE["text"]), preview_vars),
+        url=_interpolate(base_template.get("url", _HOMEBOX_DEFAULT_TEMPLATE["url"]), preview_vars) or None,
         max_height=max_h,
-        font_size=_HOMEBOX_DEFAULT_TEMPLATE["font_size"],
-        font_key=_HOMEBOX_DEFAULT_TEMPLATE["font"],
-        border_style=_HOMEBOX_DEFAULT_TEMPLATE["border_style"],
-        icon_key=_HOMEBOX_DEFAULT_TEMPLATE["icon"],
-        icon_size=_HOMEBOX_DEFAULT_TEMPLATE["icon_size"],
-        qr_size=_HOMEBOX_DEFAULT_TEMPLATE["qr_size"],
-        element_order=_HOMEBOX_DEFAULT_TEMPLATE["element_order"],
+        font_size=base_template.get("font_size", _HOMEBOX_DEFAULT_TEMPLATE["font_size"]),
+        font_key=base_template.get("font", _HOMEBOX_DEFAULT_TEMPLATE["font"]),
+        border_style=base_template.get("border_style", _HOMEBOX_DEFAULT_TEMPLATE["border_style"]),
+        icon_key=base_template.get("icon", _HOMEBOX_DEFAULT_TEMPLATE["icon"]),
+        icon_size=base_template.get("icon_size", _HOMEBOX_DEFAULT_TEMPLATE["icon_size"]),
+        qr_size=base_template.get("qr_size", _HOMEBOX_DEFAULT_TEMPLATE["qr_size"]),
+        element_order=base_template.get("element_order", _HOMEBOX_DEFAULT_TEMPLATE["element_order"]),
     )
 
     meta = {
         "id":             entry_id,
         "created_at":     time.time(),
         "starred":        True,
-        "name":           HOMEBOX_TEMPLATE_NAME,
-        **_HOMEBOX_DEFAULT_TEMPLATE,
+        "name":           template_name,
+        **{k: base_template.get(k, v) for k, v in _HOMEBOX_DEFAULT_TEMPLATE.items()},
         "rendered_width":  img.width,
         "rendered_height": img.height,
     }
@@ -709,9 +725,17 @@ def api_history_overwrite(entry_id: str):
 @app.route('/api/homebox/print', methods=['GET', 'POST'])
 def api_homebox_print():
     """
-    Homebox label webhook.  On first call, creates a "Homebox Template" entry
-    in the label library with {{TitleText}}, {{URL}} etc. placeholders.
-    Subsequent calls use that template (load it in the UI to customise it).
+    Homebox label webhook.  Selects (or creates) a per-collection template from
+    the label library and renders it with the item's data.
+
+    Template selection order:
+      1. "Homebox Template — {collection}" — created automatically on first use
+         for each Homebox label/collection (requires API credentials so the
+         collection can be looked up).
+      2. "Homebox Template" — fallback when no collection is available.
+    Both templates are editable in the library UI and persist across restarts.
+    New collection templates inherit the content of the base "Homebox Template"
+    if it has been customised, otherwise they start from the built-in default.
 
     Query parameters (GET) or JSON body (POST):
       URL                   — required; encoded into the QR code
@@ -720,10 +744,12 @@ def api_homebox_print():
       AdditionalInformation — optional
 
     Available template variables (use as {{name}} in the template text/url):
-      Webhook:  URL, TitleText, DescriptionText, AdditionalInformation
-      API item: name, description, assetId, location, tags, serialNumber,
-                modelNumber, manufacturer, notes, purchaseFrom, purchasePrice,
-                quantity, <any custom field name e.g. {{Warranty Code}}>
+      Webhook:  URL, TitleText, DescriptionText, DescriptionTextOnly,
+                LocationText, AdditionalInformation
+      API item: name, description, assetId, location, tags, collection,
+                serialNumber, modelNumber, manufacturer, notes,
+                purchaseFrom, purchasePrice, quantity,
+                <any custom field name e.g. {{Warranty Code}}>
       (API fields require HOMEBOX_URL, HOMEBOX_USER, HOMEBOX_PASSWORD env vars)
     """
     if request.method == 'POST':
@@ -764,7 +790,8 @@ def api_homebox_print():
     info = get_printer_info()
     max_h = (info.max_height_px or 128) if info.available else 128
 
-    template = _get_or_create_homebox_template(vars_dict, max_h)
+    collection = vars_dict.get("collection", "")
+    template = _get_or_create_homebox_template(vars_dict, max_h, collection=collection)
 
     img, _ = render_label_png(
         text=_interpolate(template.get("text", ""), vars_dict),

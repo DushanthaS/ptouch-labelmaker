@@ -155,6 +155,10 @@ class HomeboxClient:
         if tags:
             vars_dict["tags"] = ", ".join(t["name"] for t in tags if t.get("name"))
 
+        labels = item.get("labels") or []
+        if labels and labels[0].get("name"):
+            vars_dict["collection"] = labels[0]["name"]
+
         for cf in item.get("fields") or []:
             name = (cf.get("name") or "").strip()
             if not name:
