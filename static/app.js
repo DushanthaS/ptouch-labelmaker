@@ -104,6 +104,7 @@
     if (!container) return;
     let dragSrc = null;
 
+    // ── Mouse / pointer drag ─────────────────────────────────────────────────
     container.addEventListener('dragstart', (e) => {
       dragSrc = e.target.closest('[data-element]');
       if (!dragSrc) return;
@@ -136,6 +137,67 @@
       } else {
         container.insertBefore(dragSrc, target.nextSibling);
       }
+    });
+
+    // ── Touch drag ───────────────────────────────────────────────────────────
+    // Touch events don't bubble through the drag API so we handle them
+    // separately. We hide the dragged pill (opacity) and highlight the target,
+    // then do the DOM reorder on touchend.
+    let touchSrc = null;
+    let touchOver = null;
+
+    function pillAt(x, y) {
+      // Temporarily reveal the dragged pill so elementFromPoint can see others
+      if (touchSrc) touchSrc.style.visibility = 'hidden';
+      const el = document.elementFromPoint(x, y);
+      if (touchSrc) touchSrc.style.visibility = '';
+      return el ? el.closest('[data-element]') : null;
+    }
+
+    function clearTouchOver() {
+      if (touchOver) { touchOver.classList.remove('drag-over'); touchOver = null; }
+    }
+
+    container.addEventListener('touchstart', (e) => {
+      const pill = e.target.closest('[data-element]');
+      if (!pill) return;
+      touchSrc = pill;
+      touchSrc.classList.add('dragging');
+      // Don't call preventDefault here — let the browser decide scroll intent.
+    }, { passive: true });
+
+    container.addEventListener('touchmove', (e) => {
+      if (!touchSrc) return;
+      e.preventDefault(); // prevent scroll while dragging a pill
+      const t = e.touches[0];
+      const target = pillAt(t.clientX, t.clientY);
+      clearTouchOver();
+      if (target && target !== touchSrc) {
+        touchOver = target;
+        touchOver.classList.add('drag-over');
+      }
+    }, { passive: false });
+
+    container.addEventListener('touchend', (e) => {
+      if (!touchSrc) return;
+      touchSrc.classList.remove('dragging');
+      if (touchOver) {
+        touchOver.classList.remove('drag-over');
+        const t = e.changedTouches[0];
+        const rect = touchOver.getBoundingClientRect();
+        if (t.clientX < rect.left + rect.width / 2) {
+          container.insertBefore(touchSrc, touchOver);
+        } else {
+          container.insertBefore(touchSrc, touchOver.nextSibling);
+        }
+      }
+      touchSrc = null;
+      touchOver = null;
+    });
+
+    container.addEventListener('touchcancel', () => {
+      if (touchSrc) { touchSrc.classList.remove('dragging'); touchSrc = null; }
+      clearTouchOver();
     });
   })();
 
