@@ -102,22 +102,15 @@
   }
 
   function getTextAlign() {
-    if (!elements.textValign) return 'middle';
-    const active = elements.textValign.querySelector('button.active');
-    return active ? active.dataset.value : 'middle';
+    return elements.textValign ? (elements.textValign.value || 'middle') : 'middle';
   }
 
   function setTextAlign(val) {
-    if (!elements.textValign) return;
-    elements.textValign.querySelectorAll('button').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.value === (val || 'middle'));
-    });
+    if (elements.textValign) elements.textValign.value = val || 'middle';
   }
 
   if (elements.textValign) {
-    elements.textValign.querySelectorAll('button').forEach((btn) => {
-      btn.addEventListener('click', () => { setTextAlign(btn.dataset.value); doPreview(); });
-    });
+    elements.textValign.addEventListener('change', () => doPreview());
   }
 
   function updateElementOrderBtns() {
