@@ -4,6 +4,7 @@ Font discovery, cataloguing, and loading.
 """
 
 import functools
+import logging
 import os
 import re
 from typing import Dict, List, Optional, Tuple
@@ -11,6 +12,8 @@ from typing import Dict, List, Optional, Tuple
 from PIL import ImageFont
 
 from printer import run_cmd
+
+log = logging.getLogger(__name__)
 
 
 class FontCatalog:
@@ -230,7 +233,9 @@ def _fc_match_variant(family: str, bold: bool, italic: bool) -> Optional[str]:
         pattern = ":".join(parts)
         code, out, _ = run_cmd(["fc-match", pattern, "--format=%{file}"], timeout=3)
         path = out.strip() if code == 0 else None
-        _fc_match_cache[key] = path if path and os.path.exists(path) else None
+        result = path if path and os.path.exists(path) else None
+        log.info("fc-match %r → %r (resolved=%s)", pattern, path, result)
+        _fc_match_cache[key] = result
     return _fc_match_cache[key]
 
 
