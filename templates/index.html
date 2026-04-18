@@ -273,6 +273,35 @@
       min-height: 132px;
     }
 
+    .valign-toggle {
+      display: flex;
+      gap: 3px;
+    }
+
+    .valign-toggle button {
+      flex: 1;
+      padding: 7px 4px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .valign-toggle button:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .valign-toggle button.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
     .format-hint {
       margin: 5px 0 0;
       font-size: 11px;
@@ -1083,6 +1112,14 @@
             <div class="field">
               <label for="labelWidth">Label width (mm)</label>
               <input id="labelWidth" type="number" min="10" step="1" placeholder="auto">
+            </div>
+            <div class="field">
+              <label>Text align</label>
+              <div class="valign-toggle" id="textValign" role="group" aria-label="Text vertical alignment">
+                <button type="button" data-value="top"    title="Align to top">Top</button>
+                <button type="button" data-value="middle" title="Align to middle" class="active">Mid</button>
+                <button type="button" data-value="bottom" title="Align to bottom">Bot</button>
+              </div>
             </div>
           </div>
         </div>

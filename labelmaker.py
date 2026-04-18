@@ -444,6 +444,9 @@ def api_preview():
     else:
         element_order = None
 
+    text_align_raw = data.get('text_align', 'middle')
+    text_align = text_align_raw if text_align_raw in ('top', 'middle', 'bottom') else 'middle'
+
     if font_key not in FONT_LIBRARY:
         return jsonify({"error": f"Unknown font selection '{font_key}'."}), 400
     if border_style not in BORDER_STYLES:
@@ -484,6 +487,7 @@ def api_preview():
         icon_size=resolved_icon_size,
         max_width=max_width_px,
         element_order=element_order,
+        text_align=text_align,
     )
 
     file_id = str(uuid.uuid4())
@@ -507,6 +511,7 @@ def api_preview():
         "qr_size":         resolved_qr_size,
         "label_width_mm":  label_width_mm,
         "element_order":   element_order or ['icon', 'qr', 'text'],
+        "text_align":      text_align,
         "rendered_width":  img.width,
         "rendered_height": img.height,
     }
@@ -532,6 +537,7 @@ def api_preview():
         "icon_size":       resolved_icon_size,
         "label_width_mm":  label_width_mm,
         "element_order":   element_order or ['icon', 'qr', 'text'],
+        "text_align":      text_align,
     })
 
 

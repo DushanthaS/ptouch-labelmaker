@@ -75,6 +75,7 @@
     diagnosticsModal: $('diagnosticsModal'),
     diagnosticsModalClose: $('diagnosticsModalClose'),
     elementOrder: $('elementOrder'),
+    textValign: $('textValign'),
   };
   elements.iconModalBackdrop = elements.iconModal ? elements.iconModal.querySelector('[data-close]') : null;
 
@@ -98,6 +99,25 @@
       if (rows[key]) elements.elementOrder.appendChild(rows[key]);
     });
     updateElementOrderBtns();
+  }
+
+  function getTextAlign() {
+    if (!elements.textValign) return 'middle';
+    const active = elements.textValign.querySelector('button.active');
+    return active ? active.dataset.value : 'middle';
+  }
+
+  function setTextAlign(val) {
+    if (!elements.textValign) return;
+    elements.textValign.querySelectorAll('button').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.value === (val || 'middle'));
+    });
+  }
+
+  if (elements.textValign) {
+    elements.textValign.querySelectorAll('button').forEach((btn) => {
+      btn.addEventListener('click', () => { setTextAlign(btn.dataset.value); doPreview(); });
+    });
   }
 
   function updateElementOrderBtns() {
@@ -500,6 +520,7 @@
         icon_size: currentIconSize,
         label_width_mm: labelWidthMm,
         element_order: getElementOrder(),
+        text_align: getTextAlign(),
       }),
     });
     const data = await res.json();
@@ -846,6 +867,7 @@
     if (elements.qrSizeInput) { elements.qrSizeInput.value = String(currentQrSize); updateQrSizeDisplay(); }
     updateIconUi(entry.icon || '', { url: entry.icon ? iconPathToUrl(entry.icon) : null });
     setElementOrder(entry.element_order);
+    setTextAlign(entry.text_align || 'middle');
     currentFileId = null;
     if (elements.printBtn) elements.printBtn.disabled = !printerAvailable || hasError;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -891,6 +913,7 @@
       qr_size: currentQrSize,
       label_width_mm: labelWidthRaw !== '' ? parseFloat(labelWidthRaw) : null,
       element_order: getElementOrder(),
+      text_align: getTextAlign(),
     };
   }
 

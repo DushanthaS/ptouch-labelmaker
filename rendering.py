@@ -391,6 +391,7 @@ def render_label_png(
     icon_size: Optional[int] = None,
     max_width: Optional[int] = None,
     element_order: Optional[List[str]] = None,
+    text_align: str = "middle",
 ) -> Tuple[Image.Image, int]:
     _SS = 2  # supersample scale: render at 2× then downscale for crisp 1-bit output
     _out_height = max(24, max_height)
@@ -508,7 +509,18 @@ def render_label_png(
         elif _e == 'qr' and qr_img is not None:
             img.paste(qr_img, (x, (height - qr_img.height) // 2))
         elif _e == 'text':
-            y = (height - total_text_height) // 2
+            # Height of the tallest co-present element (QR or icon) for edge alignment
+            ref_h = max(
+                (qr_img.height  if qr_img  is not None and 'qr'   in _present else 0),
+                (icon_img.height if icon_img is not None and 'icon' in _present else 0),
+            )
+            if text_align == 'top':
+                y = (height - ref_h) // 2 if ref_h else padding
+            elif text_align == 'bottom':
+                y = ((height + ref_h) // 2 - total_text_height) if ref_h else (height - total_text_height - padding)
+            else:
+                y = (height - total_text_height) // 2
+            y = max(padding, min(y, height - total_text_height - padding))
             for _j, pl in enumerate(final_lines):
                 line_size = max(8 * _SS, font_size + pl.size_delta * _SS)
                 x_cursor = x
