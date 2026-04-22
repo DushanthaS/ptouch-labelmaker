@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+.env.*
+__pycache__
+*.pyc
+*.pyo
+docs/
+*.md
+!LICENSE
+label_store/*
+!label_store/.gitkeep
