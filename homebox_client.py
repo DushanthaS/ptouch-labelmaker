@@ -121,6 +121,21 @@ class HomeboxClient:
         return None
 
     # ------------------------------------------------------------------
+    # Item listing (for polling)
+    # ------------------------------------------------------------------
+
+    def list_recent_items(self, page_size: int = 50) -> list:
+        """
+        Return a list of items ordered by createdAt descending.
+        Each item is a summary dict (not the full ItemOut); the caller
+        should re-fetch full data via `get_item_by_url` if needed.
+        """
+        result = self._get(f"/items?orderBy=createdAt&orderDirection=desc&pageSize={page_size}")
+        if not result:
+            return []
+        return result.get("items", []) or []
+
+    # ------------------------------------------------------------------
     # Variable flattening
     # ------------------------------------------------------------------
 

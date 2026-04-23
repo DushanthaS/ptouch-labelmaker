@@ -25,6 +25,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -35,6 +36,8 @@ logging.basicConfig(
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
     datefmt="%H:%M:%S",
 )
+
+log = logging.getLogger("labelmaker")
 
 
 def _load_dotenv() -> None:
@@ -62,7 +65,7 @@ from flask import Flask, jsonify, render_template, request, send_file, url_for
 from PIL import Image
 
 from fonts import DEFAULT_FONT_KEY, FONT_LIBRARY, get_font_options, resolve_font_path
-from homebox_client import fetch_item_vars
+from homebox_client import fetch_item_vars, get_client as _homebox_get_client
 from printer import PT_CMD, get_printer_info, run_cmd
 from rendering import (
     BORDER_DEFAULT,
@@ -260,6 +263,323 @@ def _get_or_create_homebox_template(vars_dict: dict, max_h: int, collection: str
     return meta
 
 
+# ---------------------------------------------------------------------------
+# Homebox: shared render + print pipeline (used by webhook + auto-print)
+# ---------------------------------------------------------------------------
+
+def _render_homebox_label(item_url, webhook_extra=None):
+    """
+    Fetch item data, pick a template, render a label PNG.
+    Returns (PIL.Image, vars_dict) or (None, vars_dict) on failure.
+    `webhook_extra` is merged on top of API-fetched vars (webhook wins).
+    """
+    desc_full = (webhook_extra or {}).get('DescriptionText', '') or ''
+    desc_lines = desc_full.split('\n')
+    desc_only = desc_lines[0].strip() if desc_lines else ''
+    location_text = ''
+    for _line in desc_lines[1:]:
+        stripped = _line.strip()
+        if stripped.lower().startswith('location:'):
+            location_text = stripped[len('location:'):].strip()
+            break
+
+    default_webhook_vars = {
+        "URL":                   item_url,
+        "TitleText":             '',
+        "DescriptionText":       desc_full,
+        "DescriptionTextOnly":   desc_only,
+        "LocationText":          location_text,
+        "AdditionalInformation": '',
+    }
+    webhook_vars = {**default_webhook_vars, **(webhook_extra or {})}
+
+    api_vars = fetch_item_vars(item_url)
+    vars_dict = {**api_vars, **webhook_vars}
+
+    info = get_printer_info()
+    max_h = (info.max_height_px or 128) if info.available else 128
+
+    collection = vars_dict.get("collection", "")
+    template = _get_or_create_homebox_template(vars_dict, max_h, collection=collection)
+
+    label_width_mm = template.get("label_width_mm")
+    max_width_px = mm_to_px(label_width_mm) if label_width_mm is not None else None
+    text_align = template.get("text_align", "middle")
+    if text_align not in ("top", "middle", "bottom"):
+        text_align = "middle"
+
+    try:
+        img, _ = render_label_png(
+            text=_interpolate(template.get("text", ""), vars_dict),
+            url=_interpolate(template.get("url", ""), vars_dict) or None,
+            max_height=max_h,
+            font_size=template.get("font_size", 24),
+            font_key=template.get("font", DEFAULT_FONT_KEY),
+            border_style=template.get("border_style", BORDER_DEFAULT),
+            icon_key=template.get("icon", ""),
+            icon_size=template.get("icon_size"),
+            qr_size=template.get("qr_size", 96),
+            element_order=template.get("element_order"),
+            max_width=max_width_px,
+            text_align=text_align,
+        )
+        return img, vars_dict
+    except Exception as exc:
+        log.warning("Homebox label render failed for %s: %s", item_url, exc)
+        return None, vars_dict
+
+
+_PRINTER_LOCK = threading.Lock()
+
+
+def _print_image_via_ptouch(img, source_name):
+    """
+    Save img to STATIC_DIR and invoke ptouch-print. Saves to label store
+    on success. Serialised via _PRINTER_LOCK so concurrent auto-print and
+    manual print don't collide.
+    Returns (ok, file_id_or_None, detail_str).
+    """
+    info = get_printer_info()
+    if not info.available:
+        return False, None, "printer_unavailable"
+    if info.has_error:
+        return False, None, f"printer_error:{info.error_message}"
+
+    max_h = info.max_height_px or 128
+    if img.height > max_h:
+        return False, None, f"image_too_tall:{img.height}>{max_h}"
+
+    with _PRINTER_LOCK:
+        file_id = str(uuid.uuid4())
+        path = os.path.join(STATIC_DIR, f"label_{file_id}.png")
+        img.save(path, format="PNG", optimize=True)
+
+        code, out, err = run_cmd([PT_CMD, f"--image={path}"])
+        if code != 0:
+            return False, file_id, f"ptouch_failed:{(err or out or '').strip()[:120]}"
+
+        meta = {
+            "id":             file_id,
+            "created_at":     time.time(),
+            "starred":        False,
+            "name":           source_name,
+            "source":         "homebox-auto",
+            "rendered_width":  img.width,
+            "rendered_height": img.height,
+        }
+        try:
+            _save_label_entry(file_id, meta, path)
+            _cleanup_label_store()
+        except OSError:
+            pass
+
+    return True, file_id, "ok"
+
+
+def render_and_print_homebox_item(item_url, webhook_extra=None):
+    """
+    Top-level helper: render + print a Homebox item label.
+    Returns dict: {ok, name, file_id, detail}.
+    """
+    img, vars_dict = _render_homebox_label(item_url, webhook_extra=webhook_extra)
+    name = vars_dict.get("name") or vars_dict.get("TitleText") or "(unnamed)"
+    if img is None:
+        return {"ok": False, "name": name, "file_id": None, "detail": "render_failed"}
+
+    ok, file_id, detail = _print_image_via_ptouch(img, source_name=f"Homebox: {name}")
+    return {"ok": ok, "name": name, "file_id": file_id, "detail": detail}
+
+
+# ---------------------------------------------------------------------------
+# Auto-print settings + state (Homebox polling)
+# ---------------------------------------------------------------------------
+
+AUTO_PRINT_SETTINGS_PATH = os.path.join(LABEL_STORE_DIR, ".auto_print_settings.json")
+AUTO_PRINT_STATE_PATH    = os.path.join(LABEL_STORE_DIR, ".auto_print_state.json")
+
+AUTO_PRINT_DEFAULTS = {
+    "enabled":           False,
+    "interval_seconds":  30,
+    "tag_filter":        "",          # e.g. "Label-" — prefix match on any tag
+    "on_printer_down":   "retry",     # "retry" or "skip"
+}
+AUTO_PRINT_INTERVAL_MIN = 10
+AUTO_PRINT_INTERVAL_MAX = 3600
+
+
+def _auto_print_homebox_configured():
+    return _homebox_get_client() is not None
+
+
+def _load_auto_print_settings():
+    settings = dict(AUTO_PRINT_DEFAULTS)
+    try:
+        with open(AUTO_PRINT_SETTINGS_PATH) as fh:
+            data = json.load(fh) or {}
+        if isinstance(data, dict):
+            for k in AUTO_PRINT_DEFAULTS:
+                if k in data:
+                    settings[k] = data[k]
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
+    return settings
+
+
+def _save_auto_print_settings(settings):
+    clean = {
+        "enabled":          bool(settings.get("enabled", False)),
+        "interval_seconds": max(AUTO_PRINT_INTERVAL_MIN,
+                                min(int(settings.get("interval_seconds", 30)),
+                                    AUTO_PRINT_INTERVAL_MAX)),
+        "tag_filter":       str(settings.get("tag_filter", "") or "").strip(),
+        "on_printer_down":  "skip" if settings.get("on_printer_down") == "skip" else "retry",
+    }
+    try:
+        with open(AUTO_PRINT_SETTINGS_PATH, "w") as fh:
+            json.dump(clean, fh, indent=2)
+    except OSError as exc:
+        log.warning("Failed to save auto-print settings: %s", exc)
+    return clean
+
+
+def _load_auto_print_state():
+    try:
+        with open(AUTO_PRINT_STATE_PATH) as fh:
+            data = json.load(fh) or {}
+        if isinstance(data, dict):
+            return data
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def _save_auto_print_state(state):
+    try:
+        with open(AUTO_PRINT_STATE_PATH, "w") as fh:
+            json.dump(state, fh, indent=2)
+    except OSError:
+        pass
+
+
+def _auto_print_item_url(item):
+    """Construct a Homebox item page URL from an item dict and HOMEBOX_URL env."""
+    base = (os.environ.get("HOMEBOX_URL", "") or "").rstrip("/")
+    if not base:
+        return None
+    asset_id = item.get("assetId")
+    if asset_id:
+        return f"{base}/i/{asset_id}"
+    uid = item.get("id")
+    if uid:
+        return f"{base}/items/{uid}"
+    return None
+
+
+def _auto_print_item_matches_filter(item, tag_filter):
+    if not tag_filter:
+        return True
+    tags = item.get("tags") or []
+    names = [(t.get("name") or "") for t in tags if isinstance(t, dict)]
+    return any(n.startswith(tag_filter) for n in names)
+
+
+def _auto_print_poll_once(settings, state):
+    """One iteration of the poll loop. Mutates `state` in place."""
+    client = _homebox_get_client()
+    if not client:
+        return
+
+    items = client.list_recent_items(page_size=50)
+    now_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+    state["last_poll"] = now_iso
+
+    if not items:
+        return
+
+    # Homebox returns sorted desc by createdAt; process oldest first.
+    items = sorted(items, key=lambda it: it.get("createdAt", ""))
+    last_seen = state.get("last_seen_created_at") or ""
+
+    # First-run bootstrap: initialise last_seen to newest createdAt, print nothing.
+    if not last_seen:
+        state["last_seen_created_at"] = items[-1].get("createdAt", "") or now_iso
+        log.info("auto-print: initialised last_seen to %s (found %d existing items)",
+                 state["last_seen_created_at"], len(items))
+        return
+
+    new_items = [it for it in items if (it.get("createdAt", "") or "") > last_seen]
+    if not new_items:
+        return
+
+    log.info("auto-print: %d new item(s) since %s", len(new_items), last_seen)
+    tag_filter = (settings.get("tag_filter") or "").strip()
+    on_printer_down = settings.get("on_printer_down", "retry")
+
+    for item in new_items:
+        item_created = item.get("createdAt", "") or ""
+        name = item.get("name") or "(unnamed)"
+
+        if not _auto_print_item_matches_filter(item, tag_filter):
+            log.info("auto-print: skip %r (no matching tag)", name)
+            state["last_seen_created_at"] = item_created
+            continue
+
+        item_url = _auto_print_item_url(item)
+        if not item_url:
+            log.warning("auto-print: can't build URL for item %r, skipping", name)
+            state["last_seen_created_at"] = item_created
+            continue
+
+        result = render_and_print_homebox_item(item_url)
+        if result["ok"]:
+            log.info("auto-print: printed %r", result["name"])
+            state["last_seen_created_at"] = item_created
+            state["last_print"] = {
+                "name": result["name"],
+                "at":   now_iso,
+                "file_id": result.get("file_id"),
+            }
+            state.pop("last_error", None)
+        else:
+            detail = result.get("detail", "unknown")
+            log.warning("auto-print: failed %r — %s", name, detail)
+            state["last_error"] = {"name": name, "detail": detail, "at": now_iso}
+            if on_printer_down == "retry" and detail.startswith(("printer_unavailable", "printer_error")):
+                # Don't advance last_seen — we'll retry this item next tick.
+                break
+            state["last_seen_created_at"] = item_created
+
+
+_AUTO_PRINT_THREAD_STARTED = False
+
+
+def _auto_print_loop():
+    log.info("auto-print: polling thread started")
+    while True:
+        try:
+            settings = _load_auto_print_settings()
+            if settings.get("enabled") and _auto_print_homebox_configured():
+                state = _load_auto_print_state()
+                try:
+                    _auto_print_poll_once(settings, state)
+                finally:
+                    _save_auto_print_state(state)
+            interval = settings.get("interval_seconds", 30)
+        except Exception as exc:
+            log.warning("auto-print: loop error: %s", exc)
+            interval = 30
+        time.sleep(max(AUTO_PRINT_INTERVAL_MIN, min(int(interval), AUTO_PRINT_INTERVAL_MAX)))
+
+
+def _start_auto_print_thread():
+    global _AUTO_PRINT_THREAD_STARTED
+    if _AUTO_PRINT_THREAD_STARTED:
+        return
+    _AUTO_PRINT_THREAD_STARTED = True
+    t = threading.Thread(target=_auto_print_loop, name="auto-print-poll", daemon=True)
+    t.start()
+
+
 app = Flask(__name__)
 
 
@@ -282,6 +602,7 @@ def index():
         icon_min_height=ICON_MIN_HEIGHT,
         qr_min_size=QR_MIN_SIZE,
         supports_svg=SUPPORTS_SVG,
+        homebox_configured=_auto_print_homebox_configured(),
     )
 
 
@@ -731,6 +1052,54 @@ def api_history_overwrite(entry_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Auto-print endpoints (Homebox polling)
+# ---------------------------------------------------------------------------
+
+@app.route('/api/auto_print', methods=['GET'])
+def api_auto_print_get():
+    settings = _load_auto_print_settings()
+    settings["homebox_configured"] = _auto_print_homebox_configured()
+    return jsonify(settings)
+
+
+@app.route('/api/auto_print', methods=['PUT'])
+def api_auto_print_put():
+    data = request.get_json(force=True, silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request body"}), 400
+
+    current = _load_auto_print_settings()
+    merged = {**current, **{k: v for k, v in data.items() if k in AUTO_PRINT_DEFAULTS}}
+    try:
+        interval = int(merged.get("interval_seconds", 30))
+    except (TypeError, ValueError):
+        return jsonify({"error": "interval_seconds must be an integer"}), 400
+    if interval < AUTO_PRINT_INTERVAL_MIN or interval > AUTO_PRINT_INTERVAL_MAX:
+        return jsonify({"error":
+            f"interval_seconds must be between {AUTO_PRINT_INTERVAL_MIN} and {AUTO_PRINT_INTERVAL_MAX}"}), 400
+    merged["interval_seconds"] = interval
+
+    saved = _save_auto_print_settings(merged)
+    saved["homebox_configured"] = _auto_print_homebox_configured()
+    return jsonify(saved)
+
+
+@app.route('/api/auto_print/status')
+def api_auto_print_status():
+    settings = _load_auto_print_settings()
+    state    = _load_auto_print_state()
+    return jsonify({
+        "homebox_configured": _auto_print_homebox_configured(),
+        "enabled":             bool(settings.get("enabled")),
+        "interval_seconds":    settings.get("interval_seconds", 30),
+        "last_poll":           state.get("last_poll"),
+        "last_print":          state.get("last_print"),
+        "last_error":          state.get("last_error"),
+        "last_seen_created_at": state.get("last_seen_created_at"),
+    })
+
+
+# ---------------------------------------------------------------------------
 # Homebox webhook endpoint
 # ---------------------------------------------------------------------------
 
@@ -774,57 +1143,15 @@ def api_homebox_print():
     if not url:
         return jsonify({"error": "Missing required parameter: URL"}), 400
 
-    desc_full = get_param('DescriptionText')
-    # Homebox sends DescriptionText as "<description>\nLocation: <name>"
-    desc_lines = desc_full.split('\n')
-    desc_only = desc_lines[0].strip()
-    location_text = ''
-    for _line in desc_lines[1:]:
-        stripped = _line.strip()
-        if stripped.lower().startswith('location:'):
-            location_text = stripped[len('location:'):].strip()
-            break
-
-    webhook_vars = {
-        "URL":                   url,
+    webhook_extra = {
         "TitleText":             get_param('TitleText'),
-        "DescriptionText":       desc_full,
-        "DescriptionTextOnly":   desc_only,
-        "LocationText":          location_text,
+        "DescriptionText":       get_param('DescriptionText'),
         "AdditionalInformation": get_param('AdditionalInformation'),
     }
 
-    # Enrich with full item data from Homebox API (if configured).
-    # Webhook fields take priority over API fields with the same name.
-    api_vars = fetch_item_vars(url)
-    vars_dict = {**api_vars, **webhook_vars}
-
-    info = get_printer_info()
-    max_h = (info.max_height_px or 128) if info.available else 128
-
-    collection = vars_dict.get("collection", "")
-    template = _get_or_create_homebox_template(vars_dict, max_h, collection=collection)
-
-    label_width_mm = template.get("label_width_mm")
-    max_width_px = mm_to_px(label_width_mm) if label_width_mm is not None else None
-    text_align = template.get("text_align", "middle")
-    if text_align not in ("top", "middle", "bottom"):
-        text_align = "middle"
-
-    img, _ = render_label_png(
-        text=_interpolate(template.get("text", ""), vars_dict),
-        url=_interpolate(template.get("url", ""), vars_dict) or None,
-        max_height=max_h,
-        font_size=template.get("font_size", 24),
-        font_key=template.get("font", DEFAULT_FONT_KEY),
-        border_style=template.get("border_style", BORDER_DEFAULT),
-        icon_key=template.get("icon", ""),
-        icon_size=template.get("icon_size"),
-        qr_size=template.get("qr_size", 96),
-        element_order=template.get("element_order"),
-        max_width=max_width_px,
-        text_align=text_align,
-    )
+    img, _vars = _render_homebox_label(url, webhook_extra=webhook_extra)
+    if img is None:
+        return jsonify({"error": "Failed to render label"}), 500
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -833,6 +1160,8 @@ def api_homebox_print():
 
 
 # ---------------------------------------------------------------------------
+
+_start_auto_print_thread()
 
 if __name__ == '__main__':
     port  = int(os.environ.get("PORT", "5000"))

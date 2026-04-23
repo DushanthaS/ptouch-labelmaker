@@ -1422,4 +1422,112 @@
     console.error('Initial status fetch failed', err);
     if (elements.previewPane) elements.previewPane.innerHTML = '<span class="muted">Unable to reach printer status service.</span>';
   });
+
+  // ---------------------------------------------------------------------
+  // Auto-print card (visible only when Homebox is configured server-side)
+  // ---------------------------------------------------------------------
+  (function setupAutoPrint() {
+    const card = document.getElementById('autoPrintCard');
+    if (!card) return;
+
+    const el = {
+      badge:       document.getElementById('autoPrintBadge'),
+      enabled:     document.getElementById('autoPrintEnabled'),
+      interval:    document.getElementById('autoPrintInterval'),
+      tagFilter:   document.getElementById('autoPrintTagFilter'),
+      saveBtn:     document.getElementById('autoPrintSaveBtn'),
+      lastPoll:    document.getElementById('autoPrintLastPoll'),
+      lastPrint:   document.getElementById('autoPrintLastPrint'),
+      lastError:   document.getElementById('autoPrintLastError'),
+    };
+
+    function fmtRelative(iso) {
+      if (!iso) return '—';
+      const t = Date.parse(iso);
+      if (isNaN(t)) return iso;
+      const secs = Math.round((Date.now() - t) / 1000);
+      if (secs < 5)    return 'just now';
+      if (secs < 60)   return `${secs}s ago`;
+      if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
+      if (secs < 86400) return `${Math.round(secs / 3600)}h ago`;
+      return new Date(t).toLocaleString();
+    }
+
+    function setBadge(text, kind) {
+      if (!el.badge) return;
+      el.badge.textContent = text;
+      el.badge.classList.remove('ok', 'err', 'warn', 'printing');
+      if (kind) el.badge.classList.add(kind);
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/auto_print');
+        const data = await res.json();
+        if (el.enabled)   el.enabled.checked = !!data.enabled;
+        if (el.interval)  el.interval.value = String(data.interval_seconds || 30);
+        if (el.tagFilter) el.tagFilter.value = data.tag_filter || '';
+        const downRadio = document.querySelector(`input[name="autoPrintDown"][value="${data.on_printer_down || 'retry'}"]`);
+        if (downRadio) downRadio.checked = true;
+      } catch (err) {
+        console.error('Failed to load auto-print settings', err);
+      }
+    }
+
+    async function saveSettings() {
+      const downRadio = document.querySelector('input[name="autoPrintDown"]:checked');
+      const payload = {
+        enabled:          !!(el.enabled && el.enabled.checked),
+        interval_seconds: parseInt(el.interval ? el.interval.value : '30', 10),
+        tag_filter:       (el.tagFilter ? el.tagFilter.value : '').trim(),
+        on_printer_down:  downRadio ? downRadio.value : 'retry',
+      };
+      if (el.saveBtn) { el.saveBtn.disabled = true; el.saveBtn.textContent = 'Saving…'; }
+      try {
+        const res = await fetch('/api/auto_print', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(`Save failed: ${err.error || res.status}`);
+        } else {
+          await refreshStatus();
+        }
+      } finally {
+        if (el.saveBtn) { el.saveBtn.disabled = false; el.saveBtn.textContent = 'Save'; }
+      }
+    }
+
+    async function refreshStatus() {
+      try {
+        const res = await fetch('/api/auto_print/status');
+        const s = await res.json();
+        if (!s.homebox_configured) {
+          setBadge('Homebox not configured', 'err');
+        } else if (s.enabled) {
+          setBadge(`Active — every ${s.interval_seconds}s`, 'ok');
+        } else {
+          setBadge('Disabled', 'warn');
+        }
+        if (el.lastPoll) el.lastPoll.textContent = fmtRelative(s.last_poll);
+        if (el.lastPrint) {
+          const lp = s.last_print;
+          el.lastPrint.textContent = lp && lp.name ? `"${lp.name}" — ${fmtRelative(lp.at)}` : '—';
+        }
+        if (el.lastError) {
+          const le = s.last_error;
+          el.lastError.textContent = le && le.name ? `"${le.name}" — ${le.detail} (${fmtRelative(le.at)})` : '—';
+        }
+      } catch (err) {
+        setBadge('Status unavailable', 'err');
+      }
+    }
+
+    if (el.saveBtn) el.saveBtn.addEventListener('click', saveSettings);
+
+    loadSettings().then(refreshStatus);
+    setInterval(refreshStatus, 5000);
+  })();
 })();
