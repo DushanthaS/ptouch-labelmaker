@@ -457,12 +457,15 @@ def api_preview():
         font_size = int(data.get('font_size', 24))
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid font_size"}), 400
+    font_size = max(8, min(font_size, 256))
 
     qr_size_raw = data.get('qr_size')
     try:
         qr_size_val = int(qr_size_raw) if qr_size_raw is not None else None
     except (TypeError, ValueError):
         qr_size_val = None
+    if qr_size_val is not None:
+        qr_size_val = max(1, min(qr_size_val, 4096))
 
     font_key     = data.get('font', DEFAULT_FONT_KEY)
     border_style = data.get('border_style', BORDER_DEFAULT)
@@ -473,14 +476,16 @@ def api_preview():
         icon_size_val = int(icon_size_raw) if icon_size_raw is not None else None
     except (TypeError, ValueError):
         icon_size_val = None
+    if icon_size_val is not None:
+        icon_size_val = max(1, min(icon_size_val, 4096))
 
     label_width_mm_raw = data.get('label_width_mm')
     try:
         label_width_mm = float(label_width_mm_raw) if label_width_mm_raw is not None else None
     except (TypeError, ValueError):
         label_width_mm = None
-    if label_width_mm is not None and label_width_mm <= 0:
-        return jsonify({"error": "label_width_mm must be greater than 0"}), 400
+    if label_width_mm is not None and (label_width_mm <= 0 or label_width_mm > 1000):
+        return jsonify({"error": "label_width_mm must be between 0 and 1000"}), 400
 
     _valid_elements = {'icon', 'qr', 'text'}
     element_order_raw = data.get('element_order')

@@ -10,7 +10,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-PT_CMD = "/opt/ptouch-print/build/ptouch-print"
+PT_CMD = os.environ.get("PTOUCH_PRINT_BIN", "/opt/ptouch-print/build/ptouch-print")
 
 PRINTER_INFO_RE = {
     "model":       re.compile(r"^(?P<model>.*) found on USB"),
