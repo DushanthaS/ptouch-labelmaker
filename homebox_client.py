@@ -46,14 +46,14 @@ class HomeboxClient:
         import time as _time
         if _time.time() < self._login_blocked_until:
             return  # still in backoff, don't hammer the endpoint
-        payload = urllib.parse.urlencode({
+        payload = json.dumps({
             "username": self._username,
             "password": self._password,
         }).encode()
         req = urllib.request.Request(
             f"{self.base}/api/v1/users/login",
             data=payload,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers={"Content-Type": "application/json"},
             method="POST",
         )
         try:
