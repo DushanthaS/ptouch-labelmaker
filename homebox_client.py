@@ -27,18 +27,25 @@ _UUID_RE = re.compile(
 )
 
 
+_LOGIN_BACKOFF_SECONDS = 300  # wait 5 min after a failed login before retrying
+
+
 class HomeboxClient:
     def __init__(self, base_url: str, username: str, password: str):
         self.base = base_url.rstrip('/')
         self._username = username
         self._password = password
         self._token: str | None = None
+        self._login_blocked_until: float = 0.0  # epoch seconds
 
     # ------------------------------------------------------------------
     # Internal HTTP helpers
     # ------------------------------------------------------------------
 
     def _login(self) -> None:
+        import time as _time
+        if _time.time() < self._login_blocked_until:
+            return  # still in backoff, don't hammer the endpoint
         payload = urllib.parse.urlencode({
             "username": self._username,
             "password": self._password,
@@ -53,10 +60,17 @@ class HomeboxClient:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read())
                 raw = data.get("token", "")
-                self._token = raw if raw.startswith("Bearer ") else f"Bearer {raw}"
+                if raw:
+                    self._token = raw if raw.startswith("Bearer ") else f"Bearer {raw}"
+                    self._login_blocked_until = 0.0
+                else:
+                    log.warning("Homebox login returned no token (bad credentials?)")
+                    self._token = None
+                    self._login_blocked_until = _time.time() + _LOGIN_BACKOFF_SECONDS
         except Exception as exc:
             log.warning("Homebox login failed: %s", exc)
             self._token = None
+            self._login_blocked_until = _time.time() + _LOGIN_BACKOFF_SECONDS
 
     def _get(self, path: str):
         """Authenticated GET; re-authenticates once on 401. Returns parsed JSON or None."""
