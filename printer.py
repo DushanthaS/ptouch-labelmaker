@@ -14,8 +14,8 @@ PT_CMD = "/opt/ptouch-print/build/ptouch-print"
 
 PRINTER_INFO_RE = {
     "model":       re.compile(r"^(?P<model>.*) found on USB"),
-    "max_printer": re.compile(r"maximum printing width for this printer is (\d+)px"),
-    "max_tape":    re.compile(r"maximum printing width for this tape is (\d+)px"),
+    "max_printer": re.compile(r"maximum printing width (?:for this printer )?is (\d+) ?px"),
+    "max_tape":    re.compile(r"maximum printing width for this tape is (\d+) ?px"),
     "media_type":  re.compile(r"media type = (\S+)"),
     "media_width": re.compile(r"media width = (.+)$"),
     "tape_color":  re.compile(r"tape color = (.+)$"),
@@ -96,11 +96,12 @@ def run_cmd(args: list, timeout: int = 8) -> Tuple[int, str, str]:
 
 def get_printer_info() -> PrinterInfo:
     code, out, err = run_cmd([PT_CMD, "--info"])
-    if "No P-Touch printer found" in out or code not in (0,):
-        return PrinterInfo(available=False, raw=(out or err or f"exit {code}"))
+    combined = "\n".join(filter(None, [out, err]))
+    if "No P-Touch printer found" in combined or code not in (0,):
+        return PrinterInfo(available=False, raw=(combined or f"exit {code}"))
 
-    info = PrinterInfo(available=True, raw=out)
-    for line in out.splitlines():
+    info = PrinterInfo(available=True, raw=combined)
+    for line in combined.splitlines():
         for key, regex in PRINTER_INFO_RE.items():
             m = regex.search(line)
             if not m:
@@ -121,5 +122,5 @@ def get_printer_info() -> PrinterInfo:
             elif key == "text_color":
                 info.text_color = val
             elif key == "error":
-                info.error_code = val
+                info.error_code = val[2:] if val.lower().startswith("0x") else val
     return info
