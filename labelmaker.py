@@ -127,7 +127,7 @@ _HOMEBOX_DEFAULT_TEMPLATE = {
     "border_style": BORDER_DEFAULT,
     "icon": "",
     "icon_size": None,
-    "qr_size": 96,
+    "qr_size": 128,
     "element_order": ["qr", "text"],
     "label_width_mm": None,
 }
@@ -466,12 +466,12 @@ def _auto_print_item_url(item):
     base = (os.environ.get("HOMEBOX_URL", "") or "").rstrip("/")
     if not base:
         return None
+    uid = item.get("id")
+    if uid:
+        return f"{base}/item/{uid}"
     asset_id = item.get("assetId")
     if asset_id:
         return f"{base}/i/{asset_id}"
-    uid = item.get("id")
-    if uid:
-        return f"{base}/items/{uid}"
     return None
 
 
