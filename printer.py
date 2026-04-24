@@ -12,6 +12,13 @@ from typing import Dict, Optional, Tuple
 
 PT_CMD = os.environ.get("PTOUCH_PRINT_BIN", "/opt/ptouch-print/build/ptouch-print")
 
+# --precut  : cut tape just before printing so there's no slack from the
+#             previous job — reduces the leader to ~8mm (mechanical minimum).
+# --pad=0   : no extra software padding added around the image.
+# Override via PTOUCH_PRINT_EXTRA_FLAGS env var (space-separated) if needed.
+_extra_flags_env = os.environ.get("PTOUCH_PRINT_EXTRA_FLAGS", "--precut --pad=0")
+PT_PRINT_FLAGS = [f for f in _extra_flags_env.split() if f]
+
 PRINTER_INFO_RE = {
     "model":       re.compile(r"^(?P<model>.*) found on USB"),
     "max_printer": re.compile(r"maximum printing width (?:for this printer )?is (\d+) ?px"),

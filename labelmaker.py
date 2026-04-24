@@ -66,7 +66,7 @@ from PIL import Image
 
 from fonts import DEFAULT_FONT_KEY, FONT_LIBRARY, get_font_options, resolve_font_path
 from homebox_client import fetch_item_vars, get_client as _homebox_get_client
-from printer import PT_CMD, get_printer_info, run_cmd
+from printer import PT_CMD, PT_PRINT_FLAGS, get_printer_info, run_cmd
 from rendering import (
     BORDER_DEFAULT,
     BORDER_STYLES,
@@ -421,7 +421,7 @@ def _print_image_via_ptouch(img, source_name):
         path = os.path.join(STATIC_DIR, f"label_{file_id}.png")
         img.save(path, format="PNG", optimize=True)
 
-        code, out, err = run_cmd([PT_CMD, f"--image={path}"])
+        code, out, err = run_cmd([PT_CMD, *PT_PRINT_FLAGS, f"--image={path}"])
         if code != 0:
             return False, file_id, f"ptouch_failed:{(err or out or '').strip()[:120]}"
 
