@@ -121,20 +121,34 @@ HOMEBOX_TEMPLATE_NAME = "Homebox Template"
 # All are editable in the Library UI after creation.
 _HOMEBOX_TAPE_DEFAULTS = {
     "12mm": {
-        # 76px height — QR is too dense for UUID URLs; show text only.
-        "text":           "**{{name}}**\n{{assetId}}",
+        # 76px — QR too dense for UUID URLs; text only, large assetId as fallback.
+        "text":           "**{{name}}**\n{{location}}\n{{assetId}}",
+        "url":            "{{URL}}",
+        "font_size":      14,
+        "font":           DEFAULT_FONT_KEY,
+        "border_style":   BORDER_DEFAULT,
+        "icon":           "",
+        "icon_size":      None,
+        "qr_size":        60,
+        "element_order":  ["text"],
+        "label_width_mm": 40,
+    },
+    "18mm": {
+        # 112px — QR + name + location + assetId, capped at 70mm.
+        "text":           "**{{name}}**\n{{location}}\n[-2]{{assetId}}",
         "url":            "{{URL}}",
         "font_size":      16,
         "font":           DEFAULT_FONT_KEY,
         "border_style":   BORDER_DEFAULT,
         "icon":           "",
         "icon_size":      None,
-        "qr_size":        60,
-        "element_order":  ["text"],      # no QR — too small to scan reliably
-        "label_width_mm": None,
+        "qr_size":        100,
+        "element_order":  ["qr", "text"],
+        "label_width_mm": 70,
     },
-    "18mm": {
-        # 112px height — QR + name + location + asset ID.
+    "24mm": {
+        # 128px — large QR + name + location + assetId, capped at 60mm.
+        # Description omitted: makes label long and adds little scan value.
         "text":           "**{{name}}**\n{{location}}\n[-2]{{assetId}}",
         "url":            "{{URL}}",
         "font_size":      18,
@@ -142,22 +156,9 @@ _HOMEBOX_TAPE_DEFAULTS = {
         "border_style":   BORDER_DEFAULT,
         "icon":           "",
         "icon_size":      None,
-        "qr_size":        100,
-        "element_order":  ["qr", "text"],
-        "label_width_mm": None,
-    },
-    "24mm": {
-        # 128px height — large QR + rich text.
-        "text":           "**{{name}}**\n{{location}}\n[-2]{{description}}\n[-4]{{assetId}}",
-        "url":            "{{URL}}",
-        "font_size":      20,
-        "font":           DEFAULT_FONT_KEY,
-        "border_style":   BORDER_DEFAULT,
-        "icon":           "",
-        "icon_size":      None,
         "qr_size":        120,
         "element_order":  ["qr", "text"],
-        "label_width_mm": None,
+        "label_width_mm": 60,
     },
 }
 
