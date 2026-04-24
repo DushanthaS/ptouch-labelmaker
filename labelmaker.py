@@ -117,20 +117,65 @@ _TEMPLATE_VAR_RE = re.compile(r'\{\{([^}]+)\}\}')
 
 HOMEBOX_TEMPLATE_NAME = "Homebox Template"
 
-# Default Homebox template — placeholders are substituted at render time.
-# Users can edit this entry in the library to customise font, layout, etc.
-_HOMEBOX_DEFAULT_TEMPLATE = {
-    "text": "**{{TitleText}}**\n{{DescriptionTextOnly}}\n[-4]{{AdditionalInformation}}",
-    "url": "{{URL}}",
-    "font_size": 24,
-    "font": DEFAULT_FONT_KEY,
-    "border_style": BORDER_DEFAULT,
-    "icon": "",
-    "icon_size": None,
-    "qr_size": 128,
-    "element_order": ["qr", "text"],
-    "label_width_mm": None,
+# Per-tape defaults — auto-created on first print for each tape size.
+# All are editable in the Library UI after creation.
+_HOMEBOX_TAPE_DEFAULTS = {
+    "12mm": {
+        # 76px height — QR is too dense for UUID URLs; show text only.
+        "text":           "**{{name}}**\n{{assetId}}",
+        "url":            "{{URL}}",
+        "font_size":      16,
+        "font":           DEFAULT_FONT_KEY,
+        "border_style":   BORDER_DEFAULT,
+        "icon":           "",
+        "icon_size":      None,
+        "qr_size":        60,
+        "element_order":  ["text"],      # no QR — too small to scan reliably
+        "label_width_mm": None,
+    },
+    "18mm": {
+        # 112px height — QR + name + location + asset ID.
+        "text":           "**{{name}}**\n{{location}}\n[-2]{{assetId}}",
+        "url":            "{{URL}}",
+        "font_size":      18,
+        "font":           DEFAULT_FONT_KEY,
+        "border_style":   BORDER_DEFAULT,
+        "icon":           "",
+        "icon_size":      None,
+        "qr_size":        100,
+        "element_order":  ["qr", "text"],
+        "label_width_mm": None,
+    },
+    "24mm": {
+        # 128px height — large QR + rich text.
+        "text":           "**{{name}}**\n{{location}}\n[-2]{{description}}\n[-4]{{assetId}}",
+        "url":            "{{URL}}",
+        "font_size":      20,
+        "font":           DEFAULT_FONT_KEY,
+        "border_style":   BORDER_DEFAULT,
+        "icon":           "",
+        "icon_size":      None,
+        "qr_size":        120,
+        "element_order":  ["qr", "text"],
+        "label_width_mm": None,
+    },
 }
+
+# Fallback used when tape size is unknown.
+_HOMEBOX_DEFAULT_TEMPLATE = _HOMEBOX_TAPE_DEFAULTS["18mm"]
+
+
+def _tape_label(max_h: int) -> str:
+    """Map tape height in pixels to a human-readable size label."""
+    if max_h <= 80:
+        return "12mm"
+    if max_h <= 120:
+        return "18mm"
+    return "24mm"
+
+
+def _homebox_defaults_for_tape(max_h: int) -> dict:
+    return dict(_HOMEBOX_TAPE_DEFAULTS.get(_tape_label(max_h), _HOMEBOX_DEFAULT_TEMPLATE))
 
 
 # ---------------------------------------------------------------------------
@@ -201,54 +246,77 @@ def _find_label_by_name(name: str):
 
 def _get_or_create_homebox_template(vars_dict: dict, max_h: int, collection: str = "") -> dict:
     """
-    Return the best matching Homebox template library entry, creating it if needed.
+    Return the best matching Homebox template, creating it on first use.
 
-    When a collection name is provided (from the item's Homebox label), looks for
-    "Homebox Template — {collection}" first.  Falls back to the plain
-    "Homebox Template" when no collection is known.  Creates the entry from the
-    built-in default on first use; the user can then edit it in the library.
+    Lookup priority (most to least specific):
+      1. "Homebox Template — {collection} — {tape}mm"
+      2. "Homebox Template — {collection}"
+      3. "Homebox Template — {tape}mm"
+      4. "Homebox Template"
+
+    Auto-created templates use sensible per-tape defaults; all are editable
+    in the Library afterwards.
     """
-    template_name = f"Homebox Template \u2014 {collection}" if collection else HOMEBOX_TEMPLATE_NAME
-    _, meta = _find_label_by_name(template_name)
-    if meta is not None:
-        return meta
+    tape = _tape_label(max_h)
+    EM = "—"
 
-    # If we have a collection-specific name but no entry yet, fall back to the
-    # base template's *content* (if the user has already customised it) so new
-    # collections inherit those edits as their starting point.
-    base_template = _HOMEBOX_DEFAULT_TEMPLATE
+    candidates = []
+    if collection and tape:
+        candidates.append(f"Homebox Template {EM} {collection} {EM} {tape}")
     if collection:
-        _, base_meta = _find_label_by_name(HOMEBOX_TEMPLATE_NAME)
-        if base_meta is not None:
-            base_template = base_meta
+        candidates.append(f"Homebox Template {EM} {collection}")
+    if tape:
+        candidates.append(f"Homebox Template {EM} {tape}")
+    candidates.append(HOMEBOX_TEMPLATE_NAME)
+
+    for name in candidates:
+        _, meta = _find_label_by_name(name)
+        if meta is not None:
+            return meta
+
+    # Nothing found — auto-create the most specific template.
+    create_name = candidates[0]
+
+    # Inherit content from the next-best existing template so user
+    # customisations propagate to new variants automatically.
+    tape_defaults = _homebox_defaults_for_tape(max_h)
+    base_template = tape_defaults
+    for fallback in candidates[1:]:
+        _, existing = _find_label_by_name(fallback)
+        if existing is not None:
+            base_template = existing
+            break
 
     entry_id = str(uuid.uuid4())
-
     preview_vars = {
-        "URL":                   vars_dict.get("URL") or "https://homebox.example.com/i/1",
+        "URL":                   vars_dict.get("URL") or "https://homebox.example.com/item/1",
+        "name":                  vars_dict.get("name") or "Asset Name",
+        "assetId":               vars_dict.get("assetId") or "000-001",
+        "location":              vars_dict.get("location") or "Location",
+        "description":           vars_dict.get("description") or "",
         "TitleText":             vars_dict.get("TitleText") or "Asset Name",
-        "DescriptionText":       vars_dict.get("DescriptionText") or "Description",
+        "DescriptionTextOnly":   vars_dict.get("DescriptionTextOnly") or "",
         "AdditionalInformation": vars_dict.get("AdditionalInformation") or "",
     }
     img, _ = render_label_png(
-        text=_interpolate(base_template.get("text", _HOMEBOX_DEFAULT_TEMPLATE["text"]), preview_vars),
-        url=_interpolate(base_template.get("url", _HOMEBOX_DEFAULT_TEMPLATE["url"]), preview_vars) or None,
+        text=_interpolate(base_template.get("text", tape_defaults["text"]), preview_vars),
+        url=_interpolate(base_template.get("url", tape_defaults["url"]), preview_vars) or None,
         max_height=max_h,
-        font_size=base_template.get("font_size", _HOMEBOX_DEFAULT_TEMPLATE["font_size"]),
-        font_key=base_template.get("font", _HOMEBOX_DEFAULT_TEMPLATE["font"]),
-        border_style=base_template.get("border_style", _HOMEBOX_DEFAULT_TEMPLATE["border_style"]),
-        icon_key=base_template.get("icon", _HOMEBOX_DEFAULT_TEMPLATE["icon"]),
-        icon_size=base_template.get("icon_size", _HOMEBOX_DEFAULT_TEMPLATE["icon_size"]),
-        qr_size=base_template.get("qr_size", _HOMEBOX_DEFAULT_TEMPLATE["qr_size"]),
-        element_order=base_template.get("element_order", _HOMEBOX_DEFAULT_TEMPLATE["element_order"]),
+        font_size=base_template.get("font_size", tape_defaults["font_size"]),
+        font_key=base_template.get("font", tape_defaults["font"]),
+        border_style=base_template.get("border_style", tape_defaults["border_style"]),
+        icon_key=base_template.get("icon", tape_defaults["icon"]),
+        icon_size=base_template.get("icon_size", tape_defaults["icon_size"]),
+        qr_size=base_template.get("qr_size", tape_defaults["qr_size"]),
+        element_order=base_template.get("element_order", tape_defaults["element_order"]),
     )
 
     meta = {
-        "id":             entry_id,
-        "created_at":     time.time(),
-        "starred":        True,
-        "name":           template_name,
-        **{k: base_template.get(k, v) for k, v in _HOMEBOX_DEFAULT_TEMPLATE.items()},
+        "id":            entry_id,
+        "created_at":    time.time(),
+        "starred":       True,
+        "name":          create_name,
+        **{k: base_template.get(k, v) for k, v in tape_defaults.items()},
         "rendered_width":  img.width,
         "rendered_height": img.height,
     }
@@ -261,8 +329,6 @@ def _get_or_create_homebox_template(vars_dict: dict, max_h: int, collection: str
         pass
 
     return meta
-
-
 # ---------------------------------------------------------------------------
 # Homebox: shared render + print pipeline (used by webhook + auto-print)
 # ---------------------------------------------------------------------------
