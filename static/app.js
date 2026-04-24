@@ -1433,6 +1433,7 @@
     const el = {
       badge:       document.getElementById('autoPrintBadge'),
       enabled:     document.getElementById('autoPrintEnabled'),
+      batchMode:   document.getElementById('autoPrintBatchMode'),
       interval:    document.getElementById('autoPrintInterval'),
       tagFilter:   document.getElementById('autoPrintTagFilter'),
       saveBtn:     document.getElementById('autoPrintSaveBtn'),
@@ -1465,6 +1466,7 @@
         const res = await fetch('/api/auto_print');
         const data = await res.json();
         if (el.enabled)   el.enabled.checked = !!data.enabled;
+        if (el.batchMode) el.batchMode.checked = !!data.batch_mode;
         if (el.interval)  el.interval.value = String(data.interval_seconds || 30);
         if (el.tagFilter) el.tagFilter.value = data.tag_filter || '';
         const downRadio = document.querySelector(`input[name="autoPrintDown"][value="${data.on_printer_down || 'retry'}"]`);
@@ -1478,6 +1480,7 @@
       const downRadio = document.querySelector('input[name="autoPrintDown"]:checked');
       const payload = {
         enabled:          !!(el.enabled && el.enabled.checked),
+        batch_mode:       !!(el.batchMode && el.batchMode.checked),
         interval_seconds: parseInt(el.interval ? el.interval.value : '30', 10),
         tag_filter:       (el.tagFilter ? el.tagFilter.value : '').trim(),
         on_printer_down:  downRadio ? downRadio.value : 'retry',

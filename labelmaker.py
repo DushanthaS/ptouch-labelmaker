@@ -399,11 +399,15 @@ def _render_homebox_label(item_url, webhook_extra=None):
 _PRINTER_LOCK = threading.Lock()
 
 
-def _print_image_via_ptouch(img, source_name):
+def _print_image_via_ptouch(img, source_name, batch_mode=False):
     """
     Save img to STATIC_DIR and invoke ptouch-print. Saves to label store
     on success. Serialised via _PRINTER_LOCK so concurrent auto-print and
     manual print don't collide.
+
+    If batch_mode is True, uses --chain (no final feed, no cut) so the next
+    print stacks directly after this one. User cuts manually when done.
+    Otherwise uses the default flags (--precut --pad=0).
     Returns (ok, file_id_or_None, detail_str).
     """
     info = get_printer_info()
@@ -416,12 +420,14 @@ def _print_image_via_ptouch(img, source_name):
     if img.height > max_h:
         return False, None, f"image_too_tall:{img.height}>{max_h}"
 
+    flags = ["--chain", "--pad=0"] if batch_mode else list(PT_PRINT_FLAGS)
+
     with _PRINTER_LOCK:
         file_id = str(uuid.uuid4())
         path = os.path.join(STATIC_DIR, f"label_{file_id}.png")
         img.save(path, format="PNG", optimize=True)
 
-        code, out, err = run_cmd([PT_CMD, *PT_PRINT_FLAGS, f"--image={path}"])
+        code, out, err = run_cmd([PT_CMD, *flags, f"--image={path}"])
         if code != 0:
             return False, file_id, f"ptouch_failed:{(err or out or '').strip()[:120]}"
 
@@ -443,7 +449,7 @@ def _print_image_via_ptouch(img, source_name):
     return True, file_id, "ok"
 
 
-def render_and_print_homebox_item(item_url, webhook_extra=None):
+def render_and_print_homebox_item(item_url, webhook_extra=None, batch_mode=False):
     """
     Top-level helper: render + print a Homebox item label.
     Returns dict: {ok, name, file_id, detail}.
@@ -453,7 +459,7 @@ def render_and_print_homebox_item(item_url, webhook_extra=None):
     if img is None:
         return {"ok": False, "name": name, "file_id": None, "detail": "render_failed"}
 
-    ok, file_id, detail = _print_image_via_ptouch(img, source_name=f"Homebox: {name}")
+    ok, file_id, detail = _print_image_via_ptouch(img, source_name=f"Homebox: {name}", batch_mode=batch_mode)
     return {"ok": ok, "name": name, "file_id": file_id, "detail": detail}
 
 
@@ -469,6 +475,7 @@ AUTO_PRINT_DEFAULTS = {
     "interval_seconds":  30,
     "tag_filter":        "",          # e.g. "Label-" — prefix match on any tag
     "on_printer_down":   "retry",     # "retry" or "skip"
+    "batch_mode":        False,       # --chain instead of --precut; cut manually
 }
 AUTO_PRINT_INTERVAL_MIN = 10
 AUTO_PRINT_INTERVAL_MAX = 3600
@@ -500,6 +507,7 @@ def _save_auto_print_settings(settings):
                                     AUTO_PRINT_INTERVAL_MAX)),
         "tag_filter":       str(settings.get("tag_filter", "") or "").strip(),
         "on_printer_down":  "skip" if settings.get("on_printer_down") == "skip" else "retry",
+        "batch_mode":       bool(settings.get("batch_mode", False)),
     }
     try:
         with open(AUTO_PRINT_SETTINGS_PATH, "w") as fh:
@@ -597,7 +605,7 @@ def _auto_print_poll_once(settings, state):
             state["last_seen_created_at"] = item_created
             continue
 
-        result = render_and_print_homebox_item(item_url)
+        result = render_and_print_homebox_item(item_url, batch_mode=bool(settings.get("batch_mode")))
         if result["ok"]:
             log.info("auto-print: printed %r", result["name"])
             state["last_seen_created_at"] = item_created
